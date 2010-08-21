@@ -1041,7 +1041,6 @@ public class Scar {
 			buffer.append(code);
 			buffer.append("\n}}");
 			if (TRACE) trace("scar", "Executing code: " + buffer);
-			System.out.println(buffer);
 
 			// Compile class.
 			final ByteArrayOutputStream output = new ByteArrayOutputStream(32 * 1024);
