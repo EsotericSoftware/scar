@@ -5,6 +5,7 @@ import static com.esotericsoftware.minlog.Log.*;
 
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -14,9 +15,13 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
+import java.net.URI;
 import java.nio.channels.FileChannel;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map.Entry;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarInputStream;
@@ -27,8 +32,13 @@ import java.util.zip.GZIPOutputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
+import javax.tools.FileObject;
+import javax.tools.ForwardingJavaFileManager;
 import javax.tools.JavaCompiler;
+import javax.tools.JavaFileObject;
+import javax.tools.SimpleJavaFileObject;
 import javax.tools.ToolProvider;
+import javax.tools.JavaFileObject.Kind;
 
 import SevenZip.LzmaAlone;
 
@@ -175,7 +185,8 @@ public class Scar {
 		}
 
 		JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
-		if (compiler == null) throw new RuntimeException("No compiler available. Ensure you are running from a JDK, not a JRE.");
+		if (compiler == null)
+			throw new RuntimeException("No compiler available. Ensure you are running from a 1.6+ JDK, and not a JRE.");
 		if (compiler.run(null, null, null, args.toArray(new String[args.size()])) != 0) {
 			throw new RuntimeException("Error during compilation of project: " + project.get("name") + "\nSource: " + source.count()
 				+ " files\nClasspath: " + classpath);
@@ -396,7 +407,7 @@ public class Scar {
 
 		if (DEBUG) debug("scar", "Signing JAR (" + keystoreFile + ", " + alias + ":" + password + "): " + jarFile);
 
-		execute("jarsigner", "-keystore", keystoreFile, "-storepass", password, "-keypass", password, jarFile, alias);
+		executeCommand("jarsigner", "-keystore", keystoreFile, "-storepass", password, "-keypass", password, jarFile, alias);
 		return jarFile;
 	}
 
@@ -405,7 +416,7 @@ public class Scar {
 
 		if (DEBUG) debug("scar", "Normalizing JAR: " + jarFile);
 
-		execute("pack200", "--repack", jarFile);
+		executeCommand("pack200", "--repack", jarFile);
 		return jarFile;
 	}
 
@@ -421,8 +432,8 @@ public class Scar {
 
 		if (DEBUG) debug("scar", "Packing JAR: " + jarFile + " -> " + packedFile);
 
-		execute("pack200", "--no-gzip", "--segment-limit=-1", "--no-keep-file-order", "--effort=7", "--modification-time=latest",
-			packedFile, jarFile);
+		executeCommand("pack200", "--no-gzip", "--segment-limit=-1", "--no-keep-file-order", "--effort=7",
+			"--modification-time=latest", packedFile, jarFile);
 		return packedFile;
 	}
 
@@ -441,7 +452,7 @@ public class Scar {
 
 		if (DEBUG) debug("scar", "Unpacking JAR: " + packedFile + " -> " + jarFile);
 
-		execute("unpack200", jarFile, packedFile);
+		executeCommand("unpack200", jarFile, packedFile);
 		return jarFile;
 	}
 
@@ -821,7 +832,7 @@ public class Scar {
 		jar(distDir + projectJarName, new Paths(onejarDir));
 	}
 
-	static public void execute (String... command) throws IOException {
+	static public void executeCommand (String... command) throws IOException {
 		if (command == null) throw new IllegalArgumentException("command cannot be null.");
 		if (command.length == 0) throw new IllegalArgumentException("command cannot be empty.");
 
@@ -1003,8 +1014,87 @@ public class Scar {
 		return text.substring(start, text.length() + end);
 	}
 
+	static public void executeCode (String code, HashMap<String, Object> parameters) {
+		JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+		if (compiler == null)
+			throw new RuntimeException("No compiler available. Ensure you are running from a 1.6+ JDK, and not a JRE.");
+
+		try {
+			// Wrap code in a class.
+			final StringBuilder buffer = new StringBuilder(1024);
+			for (Object object : parameters.values())
+				if (object != null) buffer.append("import " + object.getClass().getName() + ";\n");
+			buffer.append("import com.esotericsoftware.scar.Scar;\n");
+			buffer.append("import static com.esotericsoftware.scar.Scar.*;\n");
+			buffer.append("import com.esotericsoftware.minlog.Log;\n");
+			buffer.append("import static com.esotericsoftware.minlog.Log.*;\n");
+			buffer.append("public class Container {\n");
+			buffer.append("public void execute (");
+			int i = 0;
+			for (Entry<String, Object> entry : parameters.entrySet()) {
+				if (i++ > 0) buffer.append(", ");
+				buffer.append(entry.getValue().getClass().getSimpleName());
+				buffer.append(' ');
+				buffer.append(entry.getKey());
+			}
+			buffer.append(") {\n");
+			buffer.append(code);
+			buffer.append("\n}}");
+			if (TRACE) trace("scar", "Executing code: " + buffer);
+			System.out.println(buffer);
+
+			// Compile class.
+			final ByteArrayOutputStream output = new ByteArrayOutputStream(32 * 1024);
+			final SimpleJavaFileObject javaObject = new SimpleJavaFileObject(URI.create("Container.java"), Kind.SOURCE) {
+				public OutputStream openOutputStream () {
+					return output;
+				}
+
+				public CharSequence getCharContent (boolean ignoreEncodingErrors) {
+					return buffer.toString();
+				}
+			};
+			compiler.getTask(null, new ForwardingJavaFileManager(compiler.getStandardFileManager(null, null, null)) {
+				public JavaFileObject getJavaFileForOutput (Location location, String className, Kind kind, FileObject sibling) {
+					return javaObject;
+				}
+			}, null, null, null, Arrays.asList(new JavaFileObject[] {javaObject})).call();
+
+			// Load class.
+			Class containerClass = new ClassLoader() {
+				protected Class<?> findClass (String name) throws ClassNotFoundException {
+					if (name.equals("Container")) {
+						byte[] bytes = output.toByteArray();
+						return defineClass(name, bytes, 0, bytes.length);
+					}
+					return super.findClass(name);
+				}
+			}.loadClass("Container");
+
+			// Execute.
+			Class[] parameterTypes = new Class[parameters.size()];
+			Object[] parameterValues = new Object[parameters.size()];
+			i = 0;
+			for (Object object : parameters.values()) {
+				parameterValues[i] = object;
+				parameterTypes[i++] = object.getClass();
+			}
+			containerClass.getMethod("execute", parameterTypes).invoke(containerClass.newInstance(), parameterValues);
+		} catch (Exception ex) {
+			throw new RuntimeException("Error executing code: " + code, ex);
+		}
+	}
+
 	public static void main (String[] args) throws IOException {
 		Project project = project(".");
+		String code = project.getDocument();
+		if (code != null) {
+			HashMap<String, Object> parameters = new HashMap();
+			parameters.put("args", new Arguments(args));
+			parameters.put("project", project);
+			executeCode(code, parameters);
+			return;
+		}
 		clean(project);
 		compile(project);
 		jar(project);
