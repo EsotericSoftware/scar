@@ -22,6 +22,7 @@ public class Project {
 	static private Pattern formatPattern = Pattern.compile("([^\\{]*)\\{([^\\}]+)\\}([^\\{]*)");
 
 	private HashMap data = new HashMap();
+	private String document;
 
 	public Project () {
 	}
@@ -46,6 +47,7 @@ public class Project {
 		YamlReader reader = new YamlReader(new FileReader(path));
 		try {
 			data = reader.read(HashMap.class);
+			document = reader.read(String.class);
 		} catch (YamlException ex) {
 			throw new IOException("Error reading YAML file: " + new File(path).getAbsolutePath(), ex);
 		} finally {
@@ -56,11 +58,13 @@ public class Project {
 	public void merge (Project project) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
 		merge(data, project.data, false);
+		if (project.document != null) document = project.document;
 	}
 
 	public void replace (Project project) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
 		merge(data, project.data, true);
+		document = project.document;
 	}
 
 	private void merge (HashMap oldMap, HashMap newMap, boolean replace) throws IOException {
@@ -207,6 +211,14 @@ public class Project {
 	public void set (Object name, Object object) {
 		if (name == null) throw new IllegalArgumentException("key cannot be null.");
 		data.put(name, object);
+	}
+
+	public String getDocument () {
+		return document;
+	}
+
+	public void setDocument (String document) {
+		this.document = document;
 	}
 
 	public String format (String text) {
