@@ -15,6 +15,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
+import java.io.StringReader;
 import java.net.URI;
 import java.nio.channels.FileChannel;
 import java.util.ArrayList;
@@ -1021,26 +1022,41 @@ public class Scar {
 
 		try {
 			// Wrap code in a class.
-			final StringBuilder buffer = new StringBuilder(1024);
-			for (Object object : parameters.values())
-				if (object != null) buffer.append("import " + object.getClass().getName() + ";\n");
-			buffer.append("import com.esotericsoftware.scar.Scar;\n");
-			buffer.append("import static com.esotericsoftware.scar.Scar.*;\n");
-			buffer.append("import com.esotericsoftware.minlog.Log;\n");
-			buffer.append("import static com.esotericsoftware.minlog.Log.*;\n");
-			buffer.append("public class Container {\n");
-			buffer.append("public void execute (");
+			StringBuilder classBuffer = new StringBuilder(2048);
+			classBuffer.append("import com.esotericsoftware.scar.Scar;\n");
+			classBuffer.append("import com.esotericsoftware.minlog.Log;\n");
+			classBuffer.append("import com.esotericsoftware.wildcard.Paths;\n");
+			classBuffer.append("import static com.esotericsoftware.scar.Scar.*;\n");
+			classBuffer.append("import static com.esotericsoftware.minlog.Log.*;\n");
+			classBuffer.append("public class Container {\n");
+			classBuffer.append("public void execute (");
 			int i = 0;
 			for (Entry<String, Object> entry : parameters.entrySet()) {
-				if (i++ > 0) buffer.append(", ");
-				buffer.append(entry.getValue().getClass().getSimpleName());
-				buffer.append(' ');
-				buffer.append(entry.getKey());
+				if (i++ > 0) classBuffer.append(',');
+				classBuffer.append('\n');
+				classBuffer.append(entry.getValue().getClass().getName());
+				classBuffer.append(' ');
+				classBuffer.append(entry.getKey());
 			}
-			buffer.append(") {\n");
-			buffer.append(code);
-			buffer.append("\n}}");
-			if (TRACE) trace("scar", "Executing code: " + buffer);
+			classBuffer.append("\n) {\n");
+			// Append code, collecting imports.
+			StringBuilder importBuffer = new StringBuilder(512);
+			BufferedReader reader = new BufferedReader(new StringReader(code));
+			while (true) {
+				String line = reader.readLine();
+				if (line == null) break;
+				if (line.trim().startsWith("import ")) {
+					importBuffer.append(line);
+					importBuffer.append('\n');
+				} else {
+					classBuffer.append(line);
+					classBuffer.append('\n');
+				}
+			}
+			classBuffer.append("}}");
+
+			final String classCode = importBuffer.append(classBuffer).toString();
+			if (TRACE) trace("scar", "Executing code: " + classCode);
 
 			// Compile class.
 			final ByteArrayOutputStream output = new ByteArrayOutputStream(32 * 1024);
@@ -1050,7 +1066,7 @@ public class Scar {
 				}
 
 				public CharSequence getCharContent (boolean ignoreEncodingErrors) {
-					return buffer.toString();
+					return classCode;
 				}
 			};
 			compiler.getTask(null, new ForwardingJavaFileManager(compiler.getStandardFileManager(null, null, null)) {
@@ -1087,7 +1103,7 @@ public class Scar {
 	public static void main (String[] args) throws IOException {
 		Project project = project(".");
 		String code = project.getDocument();
-		if (code != null) {
+		if (code != null && !code.trim().isEmpty()) {
 			HashMap<String, Object> parameters = new HashMap();
 			parameters.put("args", new Arguments(args));
 			parameters.put("project", project);

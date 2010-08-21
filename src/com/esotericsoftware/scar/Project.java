@@ -47,7 +47,7 @@ public class Project {
 		YamlReader reader = new YamlReader(new FileReader(path));
 		try {
 			data = reader.read(HashMap.class);
-			document = reader.read(String.class);
+			document = reader.readDocument();
 		} catch (YamlException ex) {
 			throw new IOException("Error reading YAML file: " + new File(path).getAbsolutePath(), ex);
 		} finally {
@@ -58,7 +58,12 @@ public class Project {
 	public void merge (Project project) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
 		merge(data, project.data, false);
-		if (project.document != null) document = project.document;
+		if (project.document != null) {
+			if (document != null)
+				document = project.document + document;
+			else
+				document = project.document;
+		}
 	}
 
 	public void replace (Project project) throws IOException {
