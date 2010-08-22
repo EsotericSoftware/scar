@@ -1,1 +1,7 @@
 main: com.esotericsoftware.scar.Scar
+---
+clean(project);
+compile(project);
+jar(project);
+dist(project);
+oneJAR(project);
