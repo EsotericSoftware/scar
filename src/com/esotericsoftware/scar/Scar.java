@@ -1247,7 +1247,7 @@ public class Scar {
 				classBuffer.append(' ');
 				classBuffer.append(entry.getKey());
 			}
-			classBuffer.append("\n) {\n");
+			classBuffer.append("\n) throws Exception {\n");
 			// Append code, collecting imports.
 			StringBuilder importBuffer = new StringBuilder(512);
 			BufferedReader reader = new BufferedReader(new StringReader(code));
