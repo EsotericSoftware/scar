@@ -47,7 +47,14 @@ import com.esotericsoftware.wildcard.Paths;
 
 // BOZO - Add javadocs method and add javadocs to dist.
 
+/**
+ * Provides utility methods for common Java build tasks.
+ */
 public class Scar {
+	/**
+	 * The Scar installation directory. The value comes from the SCAR_HOME environment variable, if it exists. Alternatively, the
+	 * "scar.home" System property can be defined.
+	 */
 	static public final String SCAR_HOME;
 	static {
 		if (System.getProperty("scar.home") != null)
@@ -55,21 +62,36 @@ public class Scar {
 		else
 			SCAR_HOME = System.getenv("SCAR_HOME");
 	}
+
+	/**
+	 * The Java installation directory.
+	 */
 	static public final String JAVA_HOME = System.getProperty("java.home");
 
+	/**
+	 * True if running on a Mac OS.
+	 */
 	static public final boolean isMac = System.getProperty("os.name").toLowerCase().contains("mac os x");
+
+	/**
+	 * True if running on a Windows OS.
+	 */
 	static public final boolean isWindows = System.getProperty("os.name").toLowerCase().contains("windows");
 
 	static {
 		Paths.setDefaultGlobExcludes("**/.svn/**");
 	}
 
-	static public Project project (String dirOrYaml) throws IOException {
-		if (dirOrYaml == null) throw new IllegalArgumentException("dirOrYaml cannot be null.");
+	/**
+	 * Loads the specified project with default values and loads any other projects needed for the "includes" property.
+	 * @param path Path to a YAML project file, or a directory containing a "project.yaml" file.
+	 */
+	static public Project project (String path) throws IOException {
+		if (path == null) throw new IllegalArgumentException("path cannot be null.");
 
 		Project defaults = new Project();
 
-		File file = new File(canonical(dirOrYaml));
+		File file = new File(canonical(path));
 		if (file.isDirectory()) {
 			String name = file.getName();
 			defaults.set("name", name);
@@ -92,42 +114,53 @@ public class Scar {
 		resources.add("src/main/resources");
 		defaults.set("resources", resources);
 
-		return project(dirOrYaml, defaults);
+		return project(path, defaults);
 	}
 
-	static public Project project (String dirOrYaml, Project defaults) throws IOException {
-		if (dirOrYaml == null) throw new IllegalArgumentException("dirOrYaml cannot be null.");
+	/**
+	 * Loads the specified project with the specified defaults and loads any other projects needed for the "includes" property.
+	 * @param path Path to a YAML project file, or a directory containing a "project.yaml" file.
+	 */
+	static public Project project (String path, Project defaults) throws IOException {
+		if (path == null) throw new IllegalArgumentException("path cannot be null.");
 		if (defaults == null) throw new IllegalArgumentException("defaults cannot be null.");
 
 		Project project = new Project();
 		project.merge(defaults);
 		for (String include : project.getList("includes"))
 			project.merge(project(include, defaults));
-		project.merge(new Project(dirOrYaml));
+		project.merge(new Project(path));
 		return project;
 	}
 
-	static public String resolvePath (String file) {
-		if (file == null) return null;
+	/**
+	 * Returns the full path for the specified file name in the current working directory, the {@link #SCAR_HOME}, and the bin
+	 * directory of {@link #JAVA_HOME}.
+	 */
+	static public String resolvePath (String fileName) {
+		if (fileName == null) return null;
 
 		String foundFile;
 		while (true) {
-			foundFile = canonical(file);
+			foundFile = canonical(fileName);
 			if (fileExists(foundFile)) break;
 
-			foundFile = new File(SCAR_HOME, file).getPath();
+			foundFile = new File(SCAR_HOME, fileName).getPath();
 			if (fileExists(foundFile)) break;
 
-			foundFile = new File(JAVA_HOME, "bin/" + file).getPath();
+			foundFile = new File(JAVA_HOME, "bin/" + fileName).getPath();
 			if (fileExists(foundFile)) break;
 
-			foundFile = file;
+			foundFile = fileName;
 			break;
 		}
-		if (TRACE) trace("scar", "Path \"" + file + "\" resolved to: " + foundFile);
+		if (TRACE) trace("scar", "Path \"" + fileName + "\" resolved to: " + foundFile);
 		return foundFile;
 	}
 
+	/**
+	 * Deletes the "target" directory and all files and directories under it.
+	 */
 	static public void clean (Project project) {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
 
@@ -135,6 +168,9 @@ public class Scar {
 		new Paths(project.format("{target}")).delete();
 	}
 
+	/**
+	 * Computes the classpath for the specified project and all its dependency projects, recursively.
+	 */
 	static public Paths classpath (Project project) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
 
@@ -143,6 +179,9 @@ public class Scar {
 		return classpath;
 	}
 
+	/**
+	 * Computes the classpath for all the dependencies of the specified project, recursively.
+	 */
 	static public Paths dependencyClasspath (Project project) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
 
@@ -157,6 +196,13 @@ public class Scar {
 		return paths;
 	}
 
+	/**
+	 * Collects the source files using the "source" property and compiles them into a "classes" directory under the target
+	 * directory. It uses "classpath" and "dependencies" to find the libraries required to compile the source.
+	 * <p>
+	 * Note: Each dependency project is not built automatically. Each needs to be built before the dependent project.
+	 * @return The path to the "classes" directory.
+	 */
 	static public String compile (Project project) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
 
@@ -195,6 +241,14 @@ public class Scar {
 		return classesDir;
 	}
 
+	/**
+	 * Collects the class files from the "classes" directory and all the resource files using the "resources" property and encodes
+	 * them into a JAR file.
+	 * 
+	 * If the resources don't contain a META-INF/MANIFEST.MF file, one is generated. If the project has a main property, the
+	 * generated manifest will include "Main-Class" and "Class-Path" entries to allow the main class to be run with "java -jar".
+	 * @return The path to the created JAR file.
+	 */
 	static public String jar (Project project) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
 
@@ -247,7 +301,11 @@ public class Scar {
 		return jarFile;
 	}
 
-	static public void jar (String jarFile, Paths paths) throws IOException {
+	/**
+	 * Encodes the specified paths into a JAR file.
+	 * @return The path to the JAR file.
+	 */
+	static public String jar (String jarFile, Paths paths) throws IOException {
 		if (jarFile == null) throw new IllegalArgumentException("jarFile cannot be null.");
 		if (paths == null) throw new IllegalArgumentException("paths cannot be null.");
 
@@ -291,8 +349,15 @@ public class Scar {
 			} catch (Exception ignored) {
 			}
 		}
+		return jarFile;
 	}
 
+	/**
+	 * Collects the distribution files using the "dist" property, the project's JAR file, and everything on the project's classpath
+	 * (including dependency project classpaths) and places them into a "dist" directory under the "target" directory. This is
+	 * everything the application needs to be run from JAR files.
+	 * @return The path to the "dist" directory.
+	 */
 	static public String dist (Project project) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
 
@@ -305,6 +370,11 @@ public class Scar {
 		return distDir;
 	}
 
+	/**
+	 * Removes any code signatures on the specified JAR. Removes any signature files in the META-INF directory and removes any
+	 * signature entries from the JAR's manifest.
+	 * @return The path to the JAR file.
+	 */
 	static public String unsign (String jarFile) throws IOException {
 		if (jarFile == null) throw new IllegalArgumentException("jarFile cannot be null.");
 
@@ -355,11 +425,20 @@ public class Scar {
 		return jarFile;
 	}
 
+	/**
+	 * Creates a new keystore in the temp directory for signing JARs. The title is used for the alias and "password" is used for
+	 * the password.
+	 * @return The path to the keystore file.
+	 */
 	static public String createTempKeystore (String company, String title) throws IOException {
 		String keystoreFile = File.createTempFile("jws", "keystore").getAbsolutePath();
 		return createKeystore(keystoreFile, title, "password", company, title);
 	}
 
+	/**
+	 * Creates a new keystore for signing JARs.
+	 * @return The path to the keystore file.
+	 */
 	static public String createKeystore (String keystoreFile, String alias, String password, String company, String title)
 		throws IOException {
 		if (keystoreFile == null) throw new IllegalArgumentException("keystoreFile cannot be null.");
@@ -399,6 +478,10 @@ public class Scar {
 		return keystoreFile;
 	}
 
+	/**
+	 * Signs the specified JAR.
+	 * @return The path to the JAR.
+	 */
 	static public String sign (String jarFile, String keystoreFile, String alias, String password) throws IOException {
 		if (jarFile == null) throw new IllegalArgumentException("jarFile cannot be null.");
 		if (keystoreFile == null) throw new IllegalArgumentException("keystoreFile cannot be null.");
@@ -412,6 +495,11 @@ public class Scar {
 		return jarFile;
 	}
 
+	/**
+	 * Packs and unpacks the JAR using pack200. This normalizes the JAR file structure so that it can be signed and then packed
+	 * without invalidating the signature.
+	 * @return The path to the JAR.
+	 */
 	static public String normalize (String jarFile) throws IOException {
 		if (jarFile == null) throw new IllegalArgumentException("jarFile cannot be null.");
 
@@ -421,12 +509,21 @@ public class Scar {
 		return jarFile;
 	}
 
+	/**
+	 * Encodes the specified file with pack200. The resulting filename is the filename plus ".pack". The file is deleted after
+	 * encoding.
+	 * @return The path to the encoded file.
+	 */
 	static public String pack200 (String jarFile) throws IOException {
 		String packedFile = pack200(jarFile, jarFile + ".pack");
 		delete(jarFile);
 		return packedFile;
 	}
 
+	/**
+	 * Encodes the specified file with pack200.
+	 * @return The path to the encoded file.
+	 */
 	static public String pack200 (String jarFile, String packedFile) throws IOException {
 		if (jarFile == null) throw new IllegalArgumentException("jarFile cannot be null.");
 		if (packedFile == null) throw new IllegalArgumentException("packedFile cannot be null.");
@@ -438,6 +535,11 @@ public class Scar {
 		return packedFile;
 	}
 
+	/**
+	 * Decodes the specified file with pack200. The filename must end in ".pack" and the resulting filename has this stripped. The
+	 * encoded file is deleted after decoding.
+	 * @return The path to the decoded file.
+	 */
 	static public String unpack200 (String packedFile) throws IOException {
 		if (packedFile == null) throw new IllegalArgumentException("packedFile cannot be null.");
 		if (!packedFile.endsWith(".pack")) throw new IllegalArgumentException("packedFile must end with .pack: " + packedFile);
@@ -447,6 +549,10 @@ public class Scar {
 		return jarFile;
 	}
 
+	/**
+	 * Decodes the specified file with pack200.
+	 * @return The path to the decoded file.
+	 */
 	static public String unpack200 (String packedFile, String jarFile) throws IOException {
 		if (packedFile == null) throw new IllegalArgumentException("packedFile cannot be null.");
 		if (jarFile == null) throw new IllegalArgumentException("jarFile cannot be null.");
@@ -457,12 +563,20 @@ public class Scar {
 		return jarFile;
 	}
 
+	/**
+	 * Encodes the specified file with GZIP. The resulting filename is the filename plus ".gz". The file is deleted after encoding.
+	 * @return The path to the encoded file.
+	 */
 	static public String gzip (String file) throws IOException {
 		String gzipFile = gzip(file, file + ".gz");
 		delete(file);
 		return gzipFile;
 	}
 
+	/**
+	 * Encodes the specified file with GZIP.
+	 * @return The path to the encoded file.
+	 */
 	static public String gzip (String file, String gzipFile) throws IOException {
 		if (file == null) throw new IllegalArgumentException("file cannot be null.");
 		if (gzipFile == null) throw new IllegalArgumentException("gzipFile cannot be null.");
@@ -481,6 +595,11 @@ public class Scar {
 		return gzipFile;
 	}
 
+	/**
+	 * Decodes the specified GZIP file. The filename must end in ".gz" and the resulting filename has this stripped. The encoded
+	 * file is deleted after decoding.
+	 * @return The path to the decoded file.
+	 */
 	static public String ungzip (String gzipFile) throws IOException {
 		if (gzipFile == null) throw new IllegalArgumentException("gzipFile cannot be null.");
 		if (!gzipFile.endsWith(".gz")) throw new IllegalArgumentException("gzipFile must end with .gz: " + gzipFile);
@@ -490,6 +609,10 @@ public class Scar {
 		return file;
 	}
 
+	/**
+	 * Decodes the specified GZIP file.
+	 * @return The path to the decoded file.
+	 */
 	static public String ungzip (String gzipFile, String file) throws IOException {
 		if (gzipFile == null) throw new IllegalArgumentException("gzipFile cannot be null.");
 		if (file == null) throw new IllegalArgumentException("file cannot be null.");
@@ -508,15 +631,10 @@ public class Scar {
 		return file;
 	}
 
-	static public String unzip (String zipFile) throws IOException {
-		if (zipFile == null) throw new IllegalArgumentException("zipFile cannot be null.");
-		if (!zipFile.endsWith(".zip")) throw new IllegalArgumentException("zipFile must end with .zip: " + zipFile);
-
-		String file = unzip(zipFile, substring(zipFile, 0, -4));
-		delete(zipFile);
-		return file;
-	}
-
+	/**
+	 * Encodes the specified files with ZIP.
+	 * @return The path to the encoded file.
+	 */
 	static public String zip (Paths paths, String zipFile) throws IOException {
 		if (paths == null) throw new IllegalArgumentException("paths cannot be null.");
 		if (zipFile == null) throw new IllegalArgumentException("zipFile cannot be null.");
@@ -527,6 +645,10 @@ public class Scar {
 		return zipFile;
 	}
 
+	/**
+	 * Decodes the specified ZIP file.
+	 * @return The path to the output directory.
+	 */
 	static public String unzip (String zipFile, String outputDir) throws IOException {
 		if (zipFile == null) throw new IllegalArgumentException("zipFile cannot be null.");
 		if (outputDir == null) throw new IllegalArgumentException("outputDir cannot be null.");
@@ -568,12 +690,21 @@ public class Scar {
 		return outputDir;
 	}
 
+	/**
+	 * Encodes the specified file with LZMA. The resulting filename is the filename plus ".lzma". The file is deleted after
+	 * encoding.
+	 * @return The path to the encoded file.
+	 */
 	static public String lzma (String file) throws IOException {
 		String lzmaFile = lzma(file, file + ".lzma");
 		delete(file);
 		return lzmaFile;
 	}
 
+	/**
+	 * Encodes the specified file with LZMA.
+	 * @return The path to the encoded file.
+	 */
 	static public String lzma (String file, String lzmaFile) throws IOException {
 		if (file == null) throw new IllegalArgumentException("file cannot be null.");
 		if (lzmaFile == null) throw new IllegalArgumentException("lzmaFile cannot be null.");
@@ -588,6 +719,11 @@ public class Scar {
 		return lzmaFile;
 	}
 
+	/**
+	 * Decodes the specified LZMA file. The filename must end in ".lzma" and the resulting filename has this stripped. The encoded
+	 * file is deleted after decoding.
+	 * @return The path to the decoded file.
+	 */
 	static public String unlzma (String lzmaFile) throws IOException {
 		if (lzmaFile == null) throw new IllegalArgumentException("lzmaFile cannot be null.");
 		if (!lzmaFile.endsWith(".lzma")) throw new IllegalArgumentException("lzmaFile must end with .lzma: " + lzmaFile);
@@ -597,6 +733,10 @@ public class Scar {
 		return file;
 	}
 
+	/**
+	 * Decodes the specified LZMA file.
+	 * @return The path to the decoded file.
+	 */
 	static public String unlzma (String lzmaFile, String file) throws IOException {
 		if (lzmaFile == null) throw new IllegalArgumentException("lzmaFile cannot be null.");
 		if (file == null) throw new IllegalArgumentException("file cannot be null.");
@@ -612,8 +752,8 @@ public class Scar {
 	}
 
 	/**
-	 * Creates a new, temporary keystore, assembles, signs, and optionally packs JARs. Should be called after
-	 * {@link #dist(Project)}.
+	 * Same as {@link #jws(Project, boolean, String, String, String)}, but uses a {@link #createTempKeystore(String, String)
+	 * temporary keystore}.
 	 */
 	static public void jws (Project project, boolean pack, String company, String title) throws IOException {
 		String keystoreFile = createTempKeystore(company, title);
@@ -622,7 +762,9 @@ public class Scar {
 	}
 
 	/**
-	 * Assembles, signs, and optionally packs JARs. Should be called after {@link #dist(Project)}.
+	 * Copies all the JAR and JNLP files from the "dist" directory to a "jws" directory under the "target" directory. It then
+	 * creates a temporary keystore and signs each JAR. If the "pack" parameter is true, it also compresses each JAR using pack200
+	 * and GZIP.
 	 */
 	static public void jws (Project project, boolean pack, String keystoreFile, String alias, String password) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
@@ -652,8 +794,8 @@ public class Scar {
 	}
 
 	/**
-	 * Creates Apache .htaccess and var files for serving packed and unpacked JARs. Should be called after
-	 * {@link #jws(Project, boolean, String, String, String)} or {@link #jws(Project, boolean, String, String)} (with packing).
+	 * Generates ".htaccess" and "type map" VAR files in the "jws" directory. These files allow Apache to serve both pack200/GZIP
+	 * JARs and regular JARs, based on capability of the client requesting the JAR.
 	 */
 	static public void jwsHtaccess (Project project) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
@@ -698,8 +840,9 @@ public class Scar {
 	}
 
 	/**
-	 * Creates a JNLP file. Should be called after {@link #jws(Project, boolean, String, String, String)} or
-	 * {@link #jws(Project, boolean, String, String)}.
+	 * Generates a JNLP file in the "jws" directory. JARs in the "jws" directory are included in the JNLP. JARs named
+	 * "natives-win.jar", "natives-mac.jar", "natives-linux.jar", and "natives-solaris.jar" are properly included in the native
+	 * section of the JNLP. The "main" property is used for the main class in the JNLP.
 	 * @param splashImage Can be null.
 	 */
 	static public void jnlp (Project project, String url, String company, String title, String splashImage) throws IOException {
@@ -787,12 +930,20 @@ public class Scar {
 		}
 	}
 
+	/**
+	 * Same as {@link #signLwjglApplet(String, String, String, String)} but uses a {@link #createTempKeystore(String, String)
+	 * temporary keystore}.
+	 */
 	static public void signLwjglApplet (String dir, String company, String title) throws IOException {
 		String keystoreFile = createTempKeystore(company, title);
 		signLwjglApplet(dir, keystoreFile, title, "password");
 		delete(keystoreFile);
 	}
 
+	/**
+	 * For the LWJGL applet loader distribution, this method decodes LZMA files as needed, removes any existing signature from the
+	 * JARs, sign the JARs, then encodes the JARs with LZMA and/or pack200 as needed.
+	 */
 	static public void signLwjglApplet (String dir, String keystoreFile, String alias, String password) throws IOException {
 		if (dir == null) throw new IllegalArgumentException("dir cannot be null.");
 		if (keystoreFile == null) throw new IllegalArgumentException("keystoreFile cannot be null.");
@@ -814,6 +965,14 @@ public class Scar {
 		}
 	}
 
+	/**
+	 * Unzips all JARs in the "dist" directory and replaces them all with a single JAR. The manifest from the project's JAR is
+	 * used. Putting everything into a single JAR makes it harder to see what libraries are being used, but makes it easier for end
+	 * users to distribute the application.
+	 * <p>
+	 * Note: Files with the same path in different JARs will be overwritten. Files in the project's JAR will never be overwritten,
+	 * but may overwrite other files.
+	 */
 	static public void oneJAR (Project project) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
 
@@ -833,6 +992,10 @@ public class Scar {
 		jar(distDir + projectJarName, new Paths(onejarDir));
 	}
 
+	/**
+	 * Executes the specified shell command. {@link #resolvePath(String)} is used to locate the file to execute. If not found, on
+	 * Windows the same filename with an "exe" extension is also tried.
+	 */
 	static public void executeCommand (String... command) throws IOException {
 		if (command == null) throw new IllegalArgumentException("command cannot be null.");
 		if (command.length == 0) throw new IllegalArgumentException("command cannot be empty.");
@@ -881,6 +1044,9 @@ public class Scar {
 		}
 	}
 
+	/**
+	 * Reads to the end of the input stream and writes the bytes to the output stream.
+	 */
 	static public void copyStream (InputStream input, OutputStream output) throws IOException {
 		if (input == null) throw new IllegalArgumentException("input cannot be null.");
 		if (output == null) throw new IllegalArgumentException("output cannot be null.");
@@ -904,6 +1070,9 @@ public class Scar {
 		}
 	}
 
+	/**
+	 * Copies a file, overwriting any existing file at the destination.
+	 */
 	static public String copyFile (String in, String out) throws IOException {
 		if (in == null) throw new IllegalArgumentException("in cannot be null.");
 		if (out == null) throw new IllegalArgumentException("out cannot be null.");
@@ -929,6 +1098,9 @@ public class Scar {
 		return out;
 	}
 
+	/**
+	 * Moves a file, overwriting any existing file at the destination.
+	 */
 	static public String moveFile (String in, String out) throws IOException {
 		if (in == null) throw new IllegalArgumentException("in cannot be null.");
 		if (out == null) throw new IllegalArgumentException("out cannot be null.");
@@ -938,6 +1110,9 @@ public class Scar {
 		return out;
 	}
 
+	/**
+	 * Deletes a file or directory and all files and subdirecties under it.
+	 */
 	static public boolean delete (String fileName) {
 		if (fileName == null) throw new IllegalArgumentException("fileName cannot be null.");
 
@@ -957,6 +1132,9 @@ public class Scar {
 		return file.delete();
 	}
 
+	/**
+	 * Creates the directories in the specified path.
+	 */
 	static public String mkdir (String path) {
 		if (path == null) throw new IllegalArgumentException("path cannot be null.");
 
@@ -964,12 +1142,18 @@ public class Scar {
 		return path;
 	}
 
+	/**
+	 * Returns true if the file exists.
+	 */
 	static public boolean fileExists (String path) {
 		if (path == null) throw new IllegalArgumentException("path cannot be null.");
 
 		return new File(path).exists();
 	}
 
+	/**
+	 * Returns the canonical path for the specified path. Eg, if "." is passed, this will resolve the actual path and return it.
+	 */
 	static public String canonical (String path) {
 		if (path == null) throw new IllegalArgumentException("path cannot be null.");
 
@@ -983,10 +1167,16 @@ public class Scar {
 		}
 	}
 
+	/**
+	 * Returns only the filename portion of the specified path.
+	 */
 	static public String fileName (String path) {
 		return new File(canonical(path)).getName();
 	}
 
+	/**
+	 * Returns only the extension portion of the specified path, or an empty string if there is no extension.
+	 */
 	static public String fileExtension (String file) {
 		if (file == null) throw new IllegalArgumentException("fileName cannot be null.");
 
@@ -995,6 +1185,9 @@ public class Scar {
 		return file.substring(commaIndex + 1);
 	}
 
+	/**
+	 * Returns only the filename portion of the specified path, with the extension, if any.
+	 */
 	static public String fileWithoutExtension (String file) {
 		if (file == null) throw new IllegalArgumentException("fileName cannot be null.");
 
@@ -1008,6 +1201,10 @@ public class Scar {
 		return file.substring(slashIndex, commaIndex);
 	}
 
+	/**
+	 * Returns a substring of the specified text.
+	 * @param end The end index of the substring. If negative, the index used will be "text.length() + end".
+	 */
 	static public String substring (String text, int start, int end) {
 		if (text == null) throw new IllegalArgumentException("text cannot be null.");
 
@@ -1015,6 +1212,18 @@ public class Scar {
 		return text.substring(start, text.length() + end);
 	}
 
+	/**
+	 * Compiles and executes the specified Java code. The code is compiled as if it were a Java method body. Imports statements can
+	 * be used at the start of the code.
+	 * <p>
+	 * These imports are automatically used:<br>
+	 * import com.esotericsoftware.scar.Scar;<br>
+	 * import com.esotericsoftware.wildcard.Paths;<br>
+	 * import com.esotericsoftware.minlog.Log;<br>
+	 * import static com.esotericsoftware.scar.Scar.*;<br>
+	 * import static com.esotericsoftware.minlog.Log.*;
+	 * @param parameters These parameters will be available in the scope where the code is executed.
+	 */
 	static public void executeCode (String code, HashMap<String, Object> parameters) {
 		JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
 		if (compiler == null)
@@ -1100,7 +1309,10 @@ public class Scar {
 		}
 	}
 
-	public static void main (String[] args) throws IOException {
+	private Scar () {
+	}
+
+	static public void main (String[] args) throws IOException {
 		Project project = project(".");
 		String code = project.getDocument();
 		if (code != null && !code.trim().isEmpty()) {

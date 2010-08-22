@@ -18,15 +18,24 @@ import com.esotericsoftware.yamlbeans.YamlReader;
 
 // BOZO - Add xpath style data lookup.
 
+/**
+ * Generic data structure that contains information needed to perform tasks.
+ */
 public class Project {
 	static private Pattern formatPattern = Pattern.compile("([^\\{]*)\\{([^\\}]+)\\}([^\\{]*)");
 
 	private HashMap data = new HashMap();
 	private String document;
 
+	/**
+	 * Creates an empty project, without any default properties.
+	 */
 	public Project () {
 	}
 
+	/**
+	 * Creates an empty project, without any default properties, and then loads the specified YAML files.
+	 */
 	public Project (String path, String... paths) throws IOException {
 		if (paths == null) throw new IllegalArgumentException("paths cannot be null.");
 
@@ -35,6 +44,10 @@ public class Project {
 			merge(new Project(mergePath));
 	}
 
+	/**
+	 * Clears the data in this project and replaces it with the contents of the specified YAML file.
+	 * @param path Path to a YAML project file, or a directory containing a "project.yaml" file.
+	 */
 	public void load (String path) throws IOException {
 		File file = new File(path);
 		if (!file.exists()) throw new IllegalArgumentException("Project not found: " + file.getAbsolutePath());
@@ -55,6 +68,10 @@ public class Project {
 		}
 	}
 
+	/**
+	 * Merges the data in this project with the contents of the specified YAML file. If the specified project has data with the
+	 * same key as this project and the value is a List or Map, the values are appended. Otherwise, the value is overwritten.
+	 */
 	public void merge (Project project) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
 		merge(data, project.data, false);
@@ -66,13 +83,18 @@ public class Project {
 		}
 	}
 
+	/**
+	 * Replaces the data in this project with the contents of the specified YAML file. If the specified project has data with the
+	 * same key as this project, the value is overwritten. Keys in this project that are not in the specified project are not
+	 * affected.
+	 */
 	public void replace (Project project) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
 		merge(data, project.data, true);
 		document = project.document;
 	}
 
-	private void merge (HashMap oldMap, HashMap newMap, boolean replace) throws IOException {
+	private void merge (Map oldMap, Map newMap, boolean replace) throws IOException {
 		for (Object object : newMap.entrySet()) {
 			Entry entry = (Entry)object;
 			Object key = entry.getKey();
@@ -82,8 +104,8 @@ public class Project {
 				oldMap.put(key, newValue);
 				continue;
 			}
-			if (newValue instanceof ArrayList) ((ArrayList)oldValue).addAll((ArrayList)newValue);
-			if (newValue instanceof HashMap) merge((HashMap)oldValue, (HashMap)newValue, replace);
+			if (newValue instanceof List) ((List)oldValue).addAll((List)newValue);
+			if (newValue instanceof Map) merge((Map)oldValue, (Map)newValue, replace);
 		}
 	}
 
@@ -143,6 +165,10 @@ public class Project {
 		return value;
 	}
 
+	/**
+	 * Returns a list of strings under the specified key. If the key is a single value, it is placed in a list and returned. If the
+	 * key does not exist, an empty list is returned.
+	 */
 	public List<String> getList (Object key, String... defaultValues) {
 		Object object = getObject(key);
 		if (!(object instanceof List)) {
@@ -158,6 +184,10 @@ public class Project {
 		return list;
 	}
 
+	/**
+	 * Returns a list of objects under the specified key. If the key is a single value, it is placed in a list and returned. If the
+	 * key does not exist, an empty list is returned.
+	 */
 	public List getObjectList (Object key, Object... defaultValues) {
 		Object object = getObject(key);
 		if (!(object instanceof List)) {
@@ -201,9 +231,12 @@ public class Project {
 		return map;
 	}
 
-	public Paths getPaths (String name) {
+	/**
+	 * Uses the strings under the specified key to {@link Paths#glob(String, String...) glob} paths.
+	 */
+	public Paths getPaths (String key) {
 		Paths paths = new Paths();
-		Object object = data.get(name);
+		Object object = data.get(key);
 		if (object instanceof List) {
 			for (Object dirPattern : (List)object)
 				paths.glob((String)dirPattern);
@@ -213,9 +246,9 @@ public class Project {
 		return paths;
 	}
 
-	public void set (Object name, Object object) {
-		if (name == null) throw new IllegalArgumentException("key cannot be null.");
-		data.put(name, object);
+	public void set (Object key, Object object) {
+		if (key == null) throw new IllegalArgumentException("key cannot be null.");
+		data.put(key, object);
 	}
 
 	public String getDocument () {
@@ -226,6 +259,9 @@ public class Project {
 		this.document = document;
 	}
 
+	/**
+	 * Replaces property names surrounded by curly braces with the value from this project.
+	 */
 	public String format (String text) {
 		Matcher matcher = formatPattern.matcher(text);
 		StringBuilder buffer = new StringBuilder(128);
