@@ -16,14 +16,13 @@ import com.esotericsoftware.wildcard.Paths;
 import com.esotericsoftware.yamlbeans.YamlException;
 import com.esotericsoftware.yamlbeans.YamlReader;
 
-// BOZO - Add xpath style data lookup.
-
 /**
  * Generic data structure that contains information needed to perform tasks.
  */
 public class Project {
 	static private Pattern formatPattern = Pattern.compile("([^\\{]*)\\{([^\\}]+)\\}([^\\{]*)");
 
+	private String dir;
 	private HashMap data = new HashMap();
 	private String document;
 
@@ -45,7 +44,8 @@ public class Project {
 	}
 
 	/**
-	 * Clears the data in this project and replaces it with the contents of the specified YAML file.
+	 * Clears the data in this project and replaces it with the contents of the specified YAML file. The project directory is set
+	 * to the directory containing the YAML file.
 	 * @param path Path to a YAML project file, or a directory containing a "project.yaml" file.
 	 */
 	public void load (String path) throws IOException {
@@ -53,9 +53,13 @@ public class Project {
 		if (!file.exists()) throw new IllegalArgumentException("Project not found: " + file.getAbsolutePath());
 		if (file.isDirectory()) {
 			file = new File(file, "project.yaml");
-			if (file.exists()) load(file.getPath());
+			if (file.exists())
+				load(file.getPath());
+			else
+				dir = Scar.canonical(path) + "/";
 			return;
 		}
+		dir = new File(Scar.canonical(path)).getParent() + "/";
 
 		YamlReader reader = new YamlReader(new FileReader(path));
 		try {
@@ -81,6 +85,7 @@ public class Project {
 			else
 				document = project.document;
 		}
+		dir = project.dir;
 	}
 
 	/**
@@ -92,6 +97,7 @@ public class Project {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
 		merge(data, project.data, true);
 		document = project.document;
+		dir = project.dir;
 	}
 
 	private void merge (Map oldMap, Map newMap, boolean replace) throws IOException {
@@ -239,16 +245,38 @@ public class Project {
 		Object object = data.get(key);
 		if (object instanceof List) {
 			for (Object dirPattern : (List)object)
-				paths.glob((String)dirPattern);
+				paths.glob(path((String)dirPattern));
 		} else if (object instanceof String) {
-			paths.glob((String)object);
+			paths.glob(path((String)object));
 		}
 		return paths;
+	}
+
+	/**
+	 * Returns the specified path if it is an absolute path, otherwise returns the path relative to this project's directory.
+	 */
+	public String path (String path) {
+		if (dir == null) return path;
+		int pipeIndex = path.indexOf('|');
+		if (pipeIndex > -1) {
+			// Handle wildcard search patterns.
+			return path(path.substring(0, pipeIndex)) + path.substring(pipeIndex);
+		}
+		if (new File(path).isAbsolute()) return path;
+		return dir + path;
 	}
 
 	public void set (Object key, Object object) {
 		if (key == null) throw new IllegalArgumentException("key cannot be null.");
 		data.put(key, object);
+	}
+
+	public void setDirectory (String dir) {
+		this.dir = Scar.canonical(dir);
+	}
+
+	public String getDirectory () {
+		return dir;
 	}
 
 	public String getDocument () {
@@ -257,6 +285,24 @@ public class Project {
 
 	public void setDocument (String document) {
 		this.document = document;
+	}
+
+	public void remove (Object key) {
+		data.remove(key);
+	}
+
+	/**
+	 * Removes an item from a list or map. If the data under the specified key is a list, the entry equal to the specified value is
+	 * removed. If the data under the specified key is a map, the entry with the key specified by value is removed.
+	 */
+	public void remove (Object key, Object value) {
+		Object object = data.get(key);
+		if (object instanceof Map)
+			((Map)object).remove(object);
+		else if (object instanceof List)
+			((List)object).remove(object);
+		else
+			data.remove(key);
 	}
 
 	/**
