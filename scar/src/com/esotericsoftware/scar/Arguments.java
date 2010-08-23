@@ -10,6 +10,9 @@ import java.util.LinkedHashMap;
 public class Arguments {
 	private final LinkedHashMap<String, String> parameters = new LinkedHashMap();
 
+	public Arguments () {
+	}
+
 	public Arguments (String[] args) {
 		this(args, 0);
 	}
