@@ -120,7 +120,7 @@ public class Scar {
 
 		// Remove dependency if a JAR of the same name is on the classpath.
 		Paths classpath = project.getPaths("classpath");
-		classpath.add(dependencyClasspath(project, classpath, false));
+		classpath.add(dependencyClasspaths(project, classpath, false));
 		for (String dependency : project.getList("dependencies")) {
 			String dependencyName = project(project.path(dependency)).get("name");
 			for (String classpathFile : classpath) {
@@ -200,16 +200,14 @@ public class Scar {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
 
 		Paths classpath = project.getPaths("classpath");
-		classpath.add(dependencyClasspath(project, classpath, true));
+		classpath.add(dependencyClasspaths(project, classpath, true));
 		return classpath;
 	}
 
 	/**
 	 * Computes the classpath for all the dependencies of the specified project, recursively.
 	 */
-	static private Paths dependencyClasspath (Project project, Paths paths, boolean includeDependencyJAR) throws IOException {
-		if (project == null) throw new IllegalArgumentException("project cannot be null.");
-
+	static private Paths dependencyClasspaths (Project project, Paths paths, boolean includeDependencyJAR) throws IOException {
 		for (String dependency : project.getList("dependencies")) {
 			Project dependencyProject = project(project.path(dependency));
 			String dependencyTarget = dependencyProject.format("{target}/");
@@ -378,8 +376,8 @@ public class Scar {
 
 	/**
 	 * Collects the distribution files using the "dist" property, the project's JAR file, and everything on the project's classpath
-	 * (including dependency project classpaths) and places them into a "dist" directory under the "target" directory. This is
-	 * everything the application needs to be run from JAR files.
+	 * (including dependency project classpaths) and places them into a "dist" directory under the "target" directory. This is also
+	 * done for depenency projects, recursively. This is everything the application needs to be run from JAR files.
 	 * @return The path to the "dist" directory.
 	 */
 	static public String dist (Project project) throws IOException {
@@ -1376,11 +1374,12 @@ public class Scar {
 	}
 
 	/**
-	 * Calls {@link #build(Project, String[])} for each dependency project in the specified project.
-	 * @param args Can be null.
+	 * Calls {@link #build(Project, Arguments)} for each dependency project in the specified project.
 	 */
-	static public void buildDependencies (Project project, String[] args) throws IOException {
+	static public void buildDependencies (Project project, Arguments args) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
+		if (args == null) throw new IllegalArgumentException("args cannot be null.");
+
 		for (String dependency : project.getList("dependencies")) {
 			Project dependencyProject = project(project.path(dependency));
 
@@ -1398,14 +1397,15 @@ public class Scar {
 	/**
 	 * Executes Java code in the specified project's document, or if there is no document it executes the buildDependencies, clean,
 	 * compile, jar, and dist utility metshods.
-	 * @param args Can be null.
 	 */
-	static public void build (Project project, String[] args) throws IOException {
+	static public void build (Project project, Arguments args) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
+		if (args == null) throw new IllegalArgumentException("args cannot be null.");
+
 		String code = project.getDocument();
 		if (code != null && !code.trim().isEmpty()) {
 			HashMap<String, Object> parameters = new HashMap();
-			parameters.put("args", args == null ? new Arguments() : new Arguments(args));
+			parameters.put("args", args);
 			parameters.put("project", project);
 			executeCode(code, parameters);
 			return;
@@ -1421,7 +1421,6 @@ public class Scar {
 	}
 
 	static public void main (String[] args) throws IOException {
-		DEBUG();
-		build(project("C:/dev/java/dragon"), args);
+		build(project("C:/dev/java/dragon"), new Arguments(args));
 	}
 }
