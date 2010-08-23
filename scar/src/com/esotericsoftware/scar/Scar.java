@@ -16,6 +16,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.StringReader;
+import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -1266,7 +1267,7 @@ public class Scar {
 	 * classpath http://example.com/someTools.jar;<br>
 	 * @param parameters These parameters will be available in the scope where the code is executed.
 	 */
-	static public void executeCode (String code, HashMap<String, Object> parameters) {
+	static public void executeCode (Project project, String code, HashMap<String, Object> parameters) {
 		JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
 		if (compiler == null)
 			throw new RuntimeException("No compiler available. Ensure you are running from a 1.6+ JDK, and not a JRE.");
@@ -1304,7 +1305,12 @@ public class Scar {
 					importBuffer.append(line);
 					importBuffer.append('\n');
 				} else if (header && trimmed.startsWith("classpath ") && trimmed.endsWith(";")) {
-					classpathURLs.add(new URL(substring(line.trim(), 10, -1)));
+					String path = substring(line.trim(), 10, -1);
+					try {
+						classpathURLs.add(new URL(path));
+					} catch (MalformedURLException ex) {
+						classpathURLs.add(new File(project.path(path)).toURI().toURL());
+					}
 				} else {
 					if (trimmed.length() > 0) header = false;
 					classBuffer.append(line);
@@ -1407,7 +1413,7 @@ public class Scar {
 			HashMap<String, Object> parameters = new HashMap();
 			parameters.put("args", args);
 			parameters.put("project", project);
-			executeCode(code, parameters);
+			executeCode(project, code, parameters);
 			return;
 		}
 		buildDependencies(project, args);
@@ -1421,6 +1427,6 @@ public class Scar {
 	}
 
 	static public void main (String[] args) throws IOException {
-		build(project("C:/dev/java/dragon"), new Arguments(args));
+		build(project("."), new Arguments(args));
 	}
 }
