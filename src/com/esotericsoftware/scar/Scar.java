@@ -67,6 +67,12 @@ public class Scar {
 	}
 
 	/**
+	 * The command line arguments Scar was started with. Empty if Scar was started with no arguments or Scar was not started from
+	 * the command line.
+	 */
+	static public Arguments args = new Arguments();
+
+	/**
 	 * The Java installation directory.
 	 */
 	static public final String JAVA_HOME = System.getProperty("java.home");
@@ -86,7 +92,7 @@ public class Scar {
 	}
 
 	/**
-	 * Loads the specified project with default values and loads any other projects needed for the "includes" property.
+	 * Loads the specified project with default values and loads any other projects needed for the "include" property.
 	 * @param path Path to a YAML project file, or a directory containing a "project.yaml" file.
 	 */
 	static public Project project (String path) throws IOException {
@@ -142,7 +148,7 @@ public class Scar {
 	}
 
 	/**
-	 * Loads the specified project with the specified defaults and loads any other projects needed for the "includes" property.
+	 * Loads the specified project with the specified defaults and loads any other projects needed for the "include" property.
 	 * @param path Path to a YAML project file, or a directory containing a "project.yaml" file.
 	 */
 	static public Project project (String path, Project defaults) throws IOException {
@@ -152,10 +158,10 @@ public class Scar {
 		Project actualProject = new Project(path);
 
 		Project project = new Project();
-		project.merge(defaults);
-		for (String include : project.getList("includes"))
-			project.merge(project(actualProject.path(include), defaults));
-		project.merge(actualProject);
+		project.replace(defaults);
+		for (String include : actualProject.getList("include"))
+			project.replace(project(actualProject.path(include), defaults));
+		project.replace(actualProject);
 		return project;
 	}
 
@@ -239,10 +245,10 @@ public class Scar {
 		}
 
 		String classesDir = mkdir(project.format("{target}/classes/"));
+		File tempFile = File.createTempFile("scar", "compile");
 
 		ArrayList<String> args = new ArrayList();
-		// args.add("-verbose");
-		args.add("-nowarn");
+		if (TRACE) args.add("-verbose");
 		args.add("-d");
 		args.add(classesDir);
 		args.add("-g:source,lines");
@@ -260,6 +266,10 @@ public class Scar {
 		if (compiler.run(null, null, null, args.toArray(new String[args.size()])) != 0) {
 			throw new RuntimeException("Error during compilation of project: " + project.get("name") + "\nSource: " + source.count()
 				+ " files\nClasspath: " + classpath);
+		}
+		try {
+			Thread.sleep(100);
+		} catch (InterruptedException ex) {
 		}
 		return classesDir;
 	}
@@ -878,9 +888,9 @@ public class Scar {
 	}
 
 	/**
-	 * Generates a JNLP file in the "jws" directory. JARs in the "jws" directory are included in the JNLP. JARs named
-	 * "natives-win.jar", "natives-mac.jar", "natives-linux.jar", and "natives-solaris.jar" are properly included in the native
-	 * section of the JNLP. The "main" property is used for the main class in the JNLP.
+	 * Generates a JNLP file in the "jws" directory. JARs in the "jws" directory are included in the JNLP. JARs containing "native"
+	 * and "win", "mac", "linux", or "solaris" are properly included in the native section of the JNLP. The "main" property is used
+	 * for the main class in the JNLP.
 	 * @param splashImage Can be null.
 	 */
 	static public void jnlp (Project project, String url, String company, String title, String splashImage) throws IOException {
@@ -895,6 +905,8 @@ public class Scar {
 		else if (INFO) //
 			info("scar", "JNLP: " + project);
 
+		if (!project.has("main")) throw new RuntimeException("Unable to generate JNLP: project has no main class");
+
 		int firstSlash = url.indexOf("/", 7);
 		int lastSlash = url.lastIndexOf("/");
 		if (firstSlash == -1 || lastSlash == -1) throw new RuntimeException("Invalid url: " + url);
@@ -907,19 +919,19 @@ public class Scar {
 		try {
 			writer.write("<?xml version='1.0' encoding='utf-8'?>\n");
 			writer.write("<jnlp spec='1.0+' codebase='" + domain + "' href='" + path + jnlpFile + "'>\n");
-			writer.write("\t<information>\n");
-			writer.write("\t\t<title>" + title + "</title>\n");
-			writer.write("\t\t<vendor>" + company + "</vendor>\n");
-			writer.write("\t\t<homepage href='" + domain + "'/>\n");
-			writer.write("\t\t<description>" + title + "</description>\n");
-			writer.write("\t\t<description kind='short'>" + title + "</description>\n");
-			if (splashImage != null) writer.write("\t\t<icon kind='splash' href='" + path + splashImage + "'/>\n");
-			writer.write("\t</information>\n");
-			writer.write("\t<security>\n");
-			writer.write("\t\t<all-permissions/>\n");
-			writer.write("\t</security>\n");
-			writer.write("\t<resources>\n");
-			writer.write("\t\t<j2se href='http://java.sun.com/products/autodl/j2se' version='1.5+' max-heap-size='128m'/>\n");
+			writer.write("<information>\n");
+			writer.write("\t<title>" + title + "</title>\n");
+			writer.write("\t<vendor>" + company + "</vendor>\n");
+			writer.write("\t<homepage href='" + domain + "'/>\n");
+			writer.write("\t<description>" + title + "</description>\n");
+			writer.write("\t<description kind='short'>" + title + "</description>\n");
+			if (splashImage != null) writer.write("\t<icon kind='splash' href='" + path + splashImage + "'/>\n");
+			writer.write("</information>\n");
+			writer.write("<security>\n");
+			writer.write("\t<all-permissions/>\n");
+			writer.write("</security>\n");
+			writer.write("<resources>\n");
+			writer.write("\t<j2se href='http://java.sun.com/products/autodl/j2se' version='1.5+' max-heap-size='128m'/>\n");
 
 			// JAR with main class first.
 			String projectJarName;
@@ -927,38 +939,42 @@ public class Scar {
 				projectJarName = project.format("{name}-{version}.jar");
 			else
 				projectJarName = project.format("{name}.jar");
-			writer.write("\t\t<jar href='" + path + projectJarName + "'/>\n");
+			writer.write("\t<jar href='" + path + projectJarName + "'/>\n");
 
 			// Rest of JARs, except natives.
 			for (String file : new Paths(jwsDir, "**/*.jar", "!*natives*", "!**/" + projectJarName))
-				writer.write("\t\t<jar href='" + path + fileName(file) + "'/>\n");
+				writer.write("\t<jar href='" + path + fileName(file) + "'/>\n");
 
-			writer.write("\t</resources>\n");
-			if (fileExists(jwsDir + "natives-win.jar")) {
-				writer.write("\t<resources os='Windows'>\n");
-				writer.write("\t\t<j2se href='http://java.sun.com/products/autodl/j2se' version='1.5+' max-heap-size='128m'/>\n");
-				writer.write("\t\t<nativelib href='" + path + "natives-win.jar'/>\n");
-				writer.write("\t</resources>\n");
+			writer.write("</resources>\n");
+			Paths nativePaths = new Paths(jwsDir, "*native*win*", "*win*native*");
+			if (nativePaths.count() == 1) {
+				writer.write("<resources os='Windows'>\n");
+				writer.write("\t<j2se href='http://java.sun.com/products/autodl/j2se' version='1.5+' max-heap-size='128m'/>\n");
+				writer.write("\t<nativelib href='" + nativePaths.getNames().get(0) + "natives-win.jar'/>\n");
+				writer.write("</resources>\n");
 			}
-			if (fileExists(jwsDir + "natives-mac.jar")) {
-				writer.write("\t<resources os='Mac'>\n");
-				writer.write("\t\t<j2se href='http://java.sun.com/products/autodl/j2se' version='1.5+' max-heap-size='128m'/>\n");
-				writer.write("\t\t<nativelib href='" + path + "natives-mac.jar'/>\n");
-				writer.write("\t</resources>\n");
+			nativePaths = new Paths(jwsDir, "*native*mac*", "*mac*native*");
+			if (nativePaths.count() == 1) {
+				writer.write("<resources os='Mac'>\n");
+				writer.write("\t<j2se href='http://java.sun.com/products/autodl/j2se' version='1.5+' max-heap-size='128m'/>\n");
+				writer.write("\t<nativelib href='" + nativePaths.getNames().get(0) + "natives-mac.jar'/>\n");
+				writer.write("</resources>\n");
 			}
-			if (fileExists(jwsDir + "natives-linux.jar")) {
-				writer.write("\t<resources os='Linux'>\n");
-				writer.write("\t\t<j2se href='http://java.sun.com/products/autodl/j2se' version='1.5+' max-heap-size='128m'/>\n");
-				writer.write("\t\t<nativelib href='" + path + "natives-linux.jar'/>\n");
-				writer.write("\t</resources>\n");
+			nativePaths = new Paths(jwsDir, "*native*linux*", "*mac*linux*");
+			if (nativePaths.count() == 1) {
+				writer.write("<resources os='Linux'>\n");
+				writer.write("\t<j2se href='http://java.sun.com/products/autodl/j2se' version='1.5+' max-heap-size='128m'/>\n");
+				writer.write("\t<nativelib href='" + nativePaths.getNames().get(0) + "natives-linux.jar'/>\n");
+				writer.write("</resources>\n");
 			}
-			if (fileExists(jwsDir + "natives-solaris.jar")) {
-				writer.write("\t<resources os='SunOS'>\n");
-				writer.write("\t\t<j2se href='http://java.sun.com/products/autodl/j2se' version='1.5+' max-heap-size='128m'/>\n");
-				writer.write("\t\t<nativelib href='" + path + "natives-solaris.jar'/>\n");
-				writer.write("\t</resources>\n");
+			nativePaths = new Paths(jwsDir, "*native*solaris*", "*solaris*native*");
+			if (nativePaths.count() == 1) {
+				writer.write("<resources os='SunOS'>\n");
+				writer.write("\t<j2se href='http://java.sun.com/products/autodl/j2se' version='1.5+' max-heap-size='128m'/>\n");
+				writer.write("\t<nativelib href='" + nativePaths.getNames().get(0) + "natives-solaris.jar'/>\n");
+				writer.write("</resources>\n");
 			}
-			writer.write("\t<application-desc main-class='" + project.get("main") + "'/>\n");
+			writer.write("<application-desc main-class='" + project.get("main") + "'/>\n");
 			writer.write("</jnlp>");
 		} finally {
 			try {
@@ -969,37 +985,76 @@ public class Scar {
 	}
 
 	/**
-	 * Same as {@link #signLwjglApplet(String, String, String, String)} but uses a {@link #createTempKeystore(String, String)
+	 * Same as {@link #lwjglApplet(Project, String, String, String)} but uses a {@link #createTempKeystore(String, String)
 	 * temporary keystore}.
 	 */
-	static public void signLwjglApplet (String dir, String company, String title) throws IOException {
+	static public void lwjglApplet (Project project, String company, String title) throws IOException {
 		String keystoreFile = createTempKeystore(company, title);
-		signLwjglApplet(dir, keystoreFile, title, "password");
+		lwjglApplet(project, keystoreFile, title, "password");
 		delete(keystoreFile);
 	}
 
-	/**
-	 * For the LWJGL applet loader distribution, this method decodes LZMA files as needed, removes any existing signature from the
-	 * JARs, sign the JARs, then encodes the JARs with LZMA and/or pack200 as needed.
-	 */
-	static public void signLwjglApplet (String dir, String keystoreFile, String alias, String password) throws IOException {
-		if (dir == null) throw new IllegalArgumentException("dir cannot be null.");
+	static public void lwjglApplet (Project project, String keystoreFile, String alias, String password) throws IOException {
+		if (project == null) throw new IllegalArgumentException("project cannot be null.");
 		if (keystoreFile == null) throw new IllegalArgumentException("keystoreFile cannot be null.");
 		if (alias == null) throw new IllegalArgumentException("alias cannot be null.");
 		if (password == null) throw new IllegalArgumentException("password cannot be null.");
 		if (password.length() < 6) throw new IllegalArgumentException("password must be 6 or more characters.");
 
-		if (INFO) info("scar", "Signing LWJGL applet JARs: " + dir);
+		if (INFO) info("scar", "LWJGL applet: " + project);
 
-		for (String jarFile : new Paths(dir, "*.jar")) {
+		String appletDir = mkdir(project.format("{target}/applet-lwjgl/"));
+		String distDir = project.format("{target}/dist/");
+		new Paths(distDir, "*.jar", "*.html", "*.htm").copyTo(appletDir);
+		for (String jarFile : new Paths(appletDir, "*.jar")) {
 			sign(normalize(unsign(jarFile)), keystoreFile, alias, password);
-			if (fileExists(jarFile + ".lzma")) lzma(jarFile, jarFile + ".lzma");
-		}
-		for (String jarLzmaFile : new Paths(dir, "*.jar.lzma")) {
-			if (fileExists(substring(jarLzmaFile, 0, -5))) continue;
-			String jarFile = sign(normalize(unsign(unlzma(jarLzmaFile))), keystoreFile, alias, password);
+			String fileName = fileName(jarFile);
+			if (fileName.equals("lwjgl_util_applet.jar") || fileName.equals("lzma.jar")) continue;
 			lzma(jarFile, jarFile + ".lzma");
+			if (fileName.contains("natives")) continue;
 			lzma(pack200(jarFile));
+		}
+
+		if (!new Paths(appletDir, "*.html", "*.htm").isEmpty()) return;
+		if (!project.has("main")) {
+			if (DEBUG) debug("Unable to generate applet.html: project has no main class");
+			return;
+		}
+		if (INFO) info("scar", "Generating: applet.html");
+		FileWriter writer = new FileWriter(appletDir + "applet.html");
+		try {
+			writer.write("<html>\n");
+			writer.write("<head><title>Applet</title></head>\n");
+			writer.write("<body>\n");
+			writer
+				.write("<applet code='org.lwjgl.util.applet.AppletLoader' archive='lwjgl_util_applet.jar, lzma.jar' codebase='.' width='640' height='480'>\n");
+			writer.write("<param name='al_title' value='" + project + "'>\n");
+			writer.write("<param name='al_main' value='" + project.get("main") + "'>\n");
+			writer.write("<param name='al_jars' value='");
+			int i = 0;
+			for (String name : new Paths(appletDir, "*.jar.pack.lzma").getNames()) {
+				if (i++ > 0) writer.write(", ");
+				writer.write(name);
+			}
+			writer.write("'>\n");
+			Paths nativePaths = new Paths(appletDir, "*native*win*.jar.lzma", "*mac*win*.jar.lzma");
+			if (nativePaths.count() == 1) writer.write("<param name='al_windows' value='" + nativePaths.getNames().get(0) + "'>\n");
+			nativePaths = new Paths(appletDir, "*native*mac*.jar.lzma", "*mac*mac*.jar.lzma");
+			if (nativePaths.count() == 1) writer.write("<param name='al_mac' value='" + nativePaths.getNames().get(0) + "'>\n");
+			nativePaths = new Paths(appletDir, "*native*linux*.jar.lzma", "*mac*linux*.jar.lzma");
+			if (nativePaths.count() == 1) writer.write("<param name='al_linux' value='" + nativePaths.getNames().get(0) + "'>\n");
+			nativePaths = new Paths(appletDir, "*native*solaris*.jar.lzma", "*mac*solaris*.jar.lzma");
+			if (nativePaths.count() == 1) writer.write("<param name='al_solaris' value='" + nativePaths.getNames().get(0) + "'>\n");
+			writer.write("<param name='al_logo' value='appletlogo.png'>\n");
+			writer.write("<param name='al_progressbar' value='appletprogress.gif'>\n");
+			writer.write("<param name='separate_jvm' value='true'>\n");
+			writer.write("</applet>\n");
+			writer.write("</body></html>\n");
+		} finally {
+			try {
+				writer.close();
+			} catch (Exception ignored) {
+			}
 		}
 	}
 
@@ -1320,7 +1375,7 @@ public class Scar {
 			classBuffer.append("}}");
 
 			final String classCode = importBuffer.append(classBuffer).toString();
-			if (TRACE) trace("scar", "Executing code: " + classCode);
+			if (TRACE) trace("scar", "Executing code:\n" + classCode);
 
 			// Compile class.
 			final ByteArrayOutputStream output = new ByteArrayOutputStream(32 * 1024);
@@ -1375,16 +1430,15 @@ public class Scar {
 			}
 			containerClass.getMethod("execute", parameterTypes).invoke(containerClass.newInstance(), parameterValues);
 		} catch (Exception ex) {
-			throw new RuntimeException("Error executing code: " + code, ex);
+			throw new RuntimeException("Error executing code:\n" + code, ex);
 		}
 	}
 
 	/**
-	 * Calls {@link #build(Project, Arguments)} for each dependency project in the specified project.
+	 * Calls {@link #build(Project)} for each dependency project in the specified project.
 	 */
-	static public void buildDependencies (Project project, Arguments args) throws IOException {
+	static public void buildDependencies (Project project) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
-		if (args == null) throw new IllegalArgumentException("args cannot be null.");
 
 		for (String dependency : project.getList("dependencies")) {
 			Project dependencyProject = project(project.path(dependency));
@@ -1396,7 +1450,7 @@ public class Scar {
 				jarFile = dependencyProject.format("{target}/{name}.jar");
 
 			if (DEBUG) debug("Building dependency: " + dependencyProject);
-			build(dependencyProject, args);
+			build(dependencyProject);
 		}
 	}
 
@@ -1404,19 +1458,17 @@ public class Scar {
 	 * Executes Java code in the specified project's document, or if there is no document it executes the buildDependencies, clean,
 	 * compile, jar, and dist utility metshods.
 	 */
-	static public void build (Project project, Arguments args) throws IOException {
+	static public void build (Project project) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
-		if (args == null) throw new IllegalArgumentException("args cannot be null.");
 
 		String code = project.getDocument();
 		if (code != null && !code.trim().isEmpty()) {
 			HashMap<String, Object> parameters = new HashMap();
-			parameters.put("args", args);
 			parameters.put("project", project);
 			executeCode(project, code, parameters);
 			return;
 		}
-		buildDependencies(project, args);
+		buildDependencies(project);
 		clean(project);
 		compile(project);
 		jar(project);
@@ -1427,6 +1479,8 @@ public class Scar {
 	}
 
 	static public void main (String[] args) throws IOException {
-		build(project("."), new Arguments(args));
+		TRACE();
+		Scar.args = new Arguments(args);
+		build(project(Scar.args.get("file", ".")));
 	}
 }

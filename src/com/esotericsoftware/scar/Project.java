@@ -40,7 +40,7 @@ public class Project {
 
 		load(path);
 		for (String mergePath : paths)
-			merge(new Project(mergePath));
+			replace(new Project(mergePath));
 	}
 
 	/**
@@ -73,46 +73,15 @@ public class Project {
 	}
 
 	/**
-	 * Merges the data in this project with the contents of the specified YAML file. If the specified project has data with the
-	 * same key as this project and the value is a List or Map, the values are appended. Otherwise, the value is overwritten.
-	 */
-	public void merge (Project project) throws IOException {
-		if (project == null) throw new IllegalArgumentException("project cannot be null.");
-		merge(data, project.data, false);
-		if (project.document != null) {
-			if (document != null)
-				document = project.document + document;
-			else
-				document = project.document;
-		}
-		dir = project.dir;
-	}
-
-	/**
 	 * Replaces the data in this project with the contents of the specified YAML file. If the specified project has data with the
 	 * same key as this project, the value is overwritten. Keys in this project that are not in the specified project are not
 	 * affected.
 	 */
 	public void replace (Project project) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
-		merge(data, project.data, true);
+		data.putAll(project.data);
 		document = project.document;
 		dir = project.dir;
-	}
-
-	private void merge (Map oldMap, Map newMap, boolean replace) throws IOException {
-		for (Object object : newMap.entrySet()) {
-			Entry entry = (Entry)object;
-			Object key = entry.getKey();
-			Object newValue = entry.getValue();
-			Object oldValue = oldMap.get(key);
-			if (replace || oldValue == null || oldValue.getClass() != newValue.getClass() || newValue instanceof String) {
-				oldMap.put(key, newValue);
-				continue;
-			}
-			if (newValue instanceof List) ((List)oldValue).addAll((List)newValue);
-			if (newValue instanceof Map) merge((Map)oldValue, (Map)newValue, replace);
-		}
 	}
 
 	public boolean has (Object key) {
