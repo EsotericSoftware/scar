@@ -544,20 +544,6 @@ public class Scar {
 	}
 
 	/**
-	 * Packs and unpacks the JAR using pack200. This normalizes the JAR file structure so that it can be signed and then packed
-	 * without invalidating the signature.
-	 * @return The path to the JAR.
-	 */
-	static public String normalize (String jarFile) throws IOException {
-		if (jarFile == null) throw new IllegalArgumentException("jarFile cannot be null.");
-
-		if (DEBUG) debug("scar", "Normalizing JAR: " + jarFile);
-
-		unpack200(pack200(jarFile));
-		return jarFile;
-	}
-
-	/**
 	 * Encodes the specified file with pack200. The resulting filename is the filename plus ".pack". The file is deleted after
 	 * encoding.
 	 * @return The path to the encoded file.
@@ -827,7 +813,7 @@ public class Scar {
 		String distDir = project.format("{target}/dist/");
 		new Paths(distDir, "*.jar", "*.jnlp").copyTo(jwsDir);
 		for (String file : new Paths(jwsDir, "*.jar"))
-			sign(normalize(file), keystoreFile, alias, password);
+			sign(unpack200(pack200(unsign(file))), keystoreFile, alias, password);
 		if (pack) {
 			String unpackedDir = mkdir(jwsDir + "unpacked/");
 			String packedDir = mkdir(jwsDir + "packed/");
@@ -1007,7 +993,7 @@ public class Scar {
 		String distDir = project.format("{target}/dist/");
 		new Paths(distDir, "*.jar", "*.html", "*.htm").copyTo(appletDir);
 		for (String jarFile : new Paths(appletDir, "*.jar")) {
-			sign(normalize(unsign(jarFile)), keystoreFile, alias, password);
+			sign(unpack200(pack200(unsign(jarFile))), keystoreFile, alias, password);
 			String fileName = fileName(jarFile);
 			if (fileName.equals("lwjgl_util_applet.jar") || fileName.equals("lzma.jar")) continue;
 			lzma(jarFile, jarFile + ".lzma");
