@@ -553,7 +553,7 @@ public class Scar {
 
 		if (DEBUG) debug("scar", "Normalizing JAR: " + jarFile);
 
-		executeCommand("pack200", "--repack", jarFile);
+		unpack200(pack200(jarFile));
 		return jarFile;
 	}
 
@@ -607,7 +607,7 @@ public class Scar {
 
 		if (DEBUG) debug("scar", "Unpacking JAR: " + packedFile + " -> " + jarFile);
 
-		executeCommand("unpack200", jarFile, packedFile);
+		executeCommand("unpack200", packedFile, jarFile);
 		return jarFile;
 	}
 
@@ -1479,7 +1479,6 @@ public class Scar {
 	}
 
 	static public void main (String[] args) throws IOException {
-		TRACE();
 		Scar.args = new Arguments(args);
 		build(project(Scar.args.get("file", ".")));
 	}
