@@ -4,7 +4,7 @@
 	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
 	<classpathentry exported="true" kind="lib" path="lib/JLzma.jar"/>
 	<classpathentry exported="true" kind="lib" path="lib/minlog-1.2.jar"/>
-	<classpathentry exported="true" kind="lib" path="lib/wildcard-1.1.jar"/>
-	<classpathentry exported="true" kind="lib" path="lib/yamlbeans-1.05.jar"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/yamlbeans"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/wildcard"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>

@@ -1,4 +1,6 @@
 main: com.esotericsoftware.scar.Scar
+classpath:
+- stuff
 ---
 clean(project);
 compile(project);
