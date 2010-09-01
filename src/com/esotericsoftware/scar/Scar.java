@@ -313,7 +313,7 @@ public class Scar {
 				buffer.append(fileName(jarFile));
 				buffer.append(" .");
 				Paths classpath = classpath(project);
-				for (String name : classpath.getNames()) {
+				for (String name : classpath.getRelativePaths()) {
 					buffer.append(' ');
 					buffer.append(name);
 				}
@@ -817,7 +817,7 @@ public class Scar {
 		if (pack) {
 			String unpackedDir = mkdir(jwsDir + "unpacked/");
 			String packedDir = mkdir(jwsDir + "packed/");
-			for (String file : new Paths(jwsDir, "*.jar", "!*natives*")) {
+			for (String file : new Paths(jwsDir, "*.jar", "!*native*")) {
 				String fileName = fileName(file);
 				String unpackedFile = unpackedDir + fileName;
 				moveFile(file, unpackedFile);
@@ -928,7 +928,7 @@ public class Scar {
 			writer.write("\t<jar href='" + path + projectJarName + "'/>\n");
 
 			// Rest of JARs, except natives.
-			for (String file : new Paths(jwsDir, "**/*.jar", "!*natives*", "!**/" + projectJarName))
+			for (String file : new Paths(jwsDir, "**/*.jar", "!*native*", "!**/" + projectJarName))
 				writer.write("\t<jar href='" + path + fileName(file) + "'/>\n");
 
 			writer.write("</resources>\n");
@@ -936,28 +936,28 @@ public class Scar {
 			if (nativePaths.count() == 1) {
 				writer.write("<resources os='Windows'>\n");
 				writer.write("\t<j2se href='http://java.sun.com/products/autodl/j2se' version='1.5+' max-heap-size='128m'/>\n");
-				writer.write("\t<nativelib href='" + nativePaths.getNames().get(0) + "natives-win.jar'/>\n");
+				writer.write("\t<nativelib href='" + nativePaths.getNames().get(0) + "'/>\n");
 				writer.write("</resources>\n");
 			}
 			nativePaths = new Paths(jwsDir, "*native*mac*", "*mac*native*");
 			if (nativePaths.count() == 1) {
 				writer.write("<resources os='Mac'>\n");
 				writer.write("\t<j2se href='http://java.sun.com/products/autodl/j2se' version='1.5+' max-heap-size='128m'/>\n");
-				writer.write("\t<nativelib href='" + nativePaths.getNames().get(0) + "natives-mac.jar'/>\n");
+				writer.write("\t<nativelib href='" + nativePaths.getNames().get(0) + "'/>\n");
 				writer.write("</resources>\n");
 			}
-			nativePaths = new Paths(jwsDir, "*native*linux*", "*mac*linux*");
+			nativePaths = new Paths(jwsDir, "*native*linux*", "*linux*native*");
 			if (nativePaths.count() == 1) {
 				writer.write("<resources os='Linux'>\n");
 				writer.write("\t<j2se href='http://java.sun.com/products/autodl/j2se' version='1.5+' max-heap-size='128m'/>\n");
-				writer.write("\t<nativelib href='" + nativePaths.getNames().get(0) + "natives-linux.jar'/>\n");
+				writer.write("\t<nativelib href='" + nativePaths.getNames().get(0) + "'/>\n");
 				writer.write("</resources>\n");
 			}
 			nativePaths = new Paths(jwsDir, "*native*solaris*", "*solaris*native*");
 			if (nativePaths.count() == 1) {
 				writer.write("<resources os='SunOS'>\n");
 				writer.write("\t<j2se href='http://java.sun.com/products/autodl/j2se' version='1.5+' max-heap-size='128m'/>\n");
-				writer.write("\t<nativelib href='" + nativePaths.getNames().get(0) + "natives-solaris.jar'/>\n");
+				writer.write("\t<nativelib href='" + nativePaths.getNames().get(0) + "'/>\n");
 				writer.write("</resources>\n");
 			}
 			writer.write("<application-desc main-class='" + project.get("main") + "'/>\n");
@@ -991,13 +991,13 @@ public class Scar {
 
 		String appletDir = mkdir(project.format("{target}/applet-lwjgl/"));
 		String distDir = project.format("{target}/dist/");
-		new Paths(distDir, "*.jar", "*.html", "*.htm").copyTo(appletDir);
+		new Paths(distDir, "**/*.jar", "*.html", "*.htm").flatten().copyTo(appletDir);
 		for (String jarFile : new Paths(appletDir, "*.jar")) {
 			sign(unpack200(pack200(unsign(jarFile))), keystoreFile, alias, password);
 			String fileName = fileName(jarFile);
 			if (fileName.equals("lwjgl_util_applet.jar") || fileName.equals("lzma.jar")) continue;
 			lzma(jarFile, jarFile + ".lzma");
-			if (fileName.contains("natives")) continue;
+			if (fileName.contains("native")) continue;
 			lzma(pack200(jarFile));
 		}
 
@@ -1023,13 +1023,13 @@ public class Scar {
 				writer.write(name);
 			}
 			writer.write("'>\n");
-			Paths nativePaths = new Paths(appletDir, "*native*win*.jar.lzma", "*mac*win*.jar.lzma");
+			Paths nativePaths = new Paths(appletDir, "*native*win*.jar.lzma", "*win*native*.jar.lzma");
 			if (nativePaths.count() == 1) writer.write("<param name='al_windows' value='" + nativePaths.getNames().get(0) + "'>\n");
-			nativePaths = new Paths(appletDir, "*native*mac*.jar.lzma", "*mac*mac*.jar.lzma");
+			nativePaths = new Paths(appletDir, "*native*mac*.jar.lzma", "*mac*native*.jar.lzma");
 			if (nativePaths.count() == 1) writer.write("<param name='al_mac' value='" + nativePaths.getNames().get(0) + "'>\n");
-			nativePaths = new Paths(appletDir, "*native*linux*.jar.lzma", "*mac*linux*.jar.lzma");
+			nativePaths = new Paths(appletDir, "*native*linux*.jar.lzma", "*linux*native*.jar.lzma");
 			if (nativePaths.count() == 1) writer.write("<param name='al_linux' value='" + nativePaths.getNames().get(0) + "'>\n");
-			nativePaths = new Paths(appletDir, "*native*solaris*.jar.lzma", "*mac*solaris*.jar.lzma");
+			nativePaths = new Paths(appletDir, "*native*solaris*.jar.lzma", "*solaris*native*.jar.lzma");
 			if (nativePaths.count() == 1) writer.write("<param name='al_solaris' value='" + nativePaths.getNames().get(0) + "'>\n");
 			writer.write("<param name='al_logo' value='appletlogo.png'>\n");
 			writer.write("<param name='al_progressbar' value='appletprogress.gif'>\n");

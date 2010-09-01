@@ -1,9 +1,11 @@
 
 package com.esotericsoftware.scar;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -61,14 +63,34 @@ public class Project {
 		}
 		dir = new File(Scar.canonical(path)).getParent() + "/";
 
-		YamlReader reader = new YamlReader(new FileReader(path));
+		BufferedReader fileReader = new BufferedReader(new FileReader(path));
 		try {
-			data = reader.read(HashMap.class);
-			document = reader.readDocument();
-		} catch (YamlException ex) {
-			throw new IOException("Error reading YAML file: " + new File(path).getAbsolutePath(), ex);
+			StringBuffer buffer = new StringBuffer(2048);
+			while (true) {
+				String line = fileReader.readLine();
+				if (line == null || line.trim().equals("---")) break;
+				buffer.append(line);
+				buffer.append('\n');
+			}
+
+			YamlReader yamlReader = new YamlReader(new StringReader(buffer.toString()));
+			try {
+				data = yamlReader.read(HashMap.class);
+				yamlReader.close();
+			} catch (YamlException ex) {
+				throw new IOException("Error reading YAML file: " + new File(path).getAbsolutePath(), ex);
+			}
+
+			buffer.setLength(0);
+			while (true) {
+				String line = fileReader.readLine();
+				if (line == null) break;
+				buffer.append(line);
+				buffer.append('\n');
+			}
+			document = buffer.toString();
 		} finally {
-			reader.close();
+			fileReader.close();
 		}
 	}
 
