@@ -973,14 +973,16 @@ public class Scar {
 	/**
 	 * Same as {@link #lwjglApplet(Project, String, String, String)} but uses a {@link #createTempKeystore(String, String)
 	 * temporary keystore}.
+	 * @return The path to the "applet-lwjgl" directory.
 	 */
-	static public void lwjglApplet (Project project, String company, String title) throws IOException {
+	static public String lwjglApplet (Project project, String company, String title) throws IOException {
 		String keystoreFile = createTempKeystore(company, title);
-		lwjglApplet(project, keystoreFile, title, "password");
+		String appletDir = lwjglApplet(project, keystoreFile, title, "password");
 		delete(keystoreFile);
+		return appletDir;
 	}
 
-	static public void lwjglApplet (Project project, String keystoreFile, String alias, String password) throws IOException {
+	static public String lwjglApplet (Project project, String keystoreFile, String alias, String password) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
 		if (keystoreFile == null) throw new IllegalArgumentException("keystoreFile cannot be null.");
 		if (alias == null) throw new IllegalArgumentException("alias cannot be null.");
@@ -1001,10 +1003,10 @@ public class Scar {
 			lzma(pack200(jarFile));
 		}
 
-		if (!new Paths(appletDir, "*.html", "*.htm").isEmpty()) return;
+		if (!new Paths(appletDir, "*.html", "*.htm").isEmpty()) return appletDir;
 		if (!project.has("main")) {
 			if (DEBUG) debug("Unable to generate applet.html: project has no main class");
-			return;
+			return appletDir;
 		}
 		if (INFO) info("scar", "Generating: applet.html");
 		FileWriter writer = new FileWriter(appletDir + "applet.html");
@@ -1014,6 +1016,7 @@ public class Scar {
 			writer.write("<body>\n");
 			writer
 				.write("<applet code='org.lwjgl.util.applet.AppletLoader' archive='lwjgl_util_applet.jar, lzma.jar' codebase='.' width='640' height='480'>\n");
+			if (project.has("version")) writer.write("<param name='al_version' value='" + project.getInt("version") + "'>\n");
 			writer.write("<param name='al_title' value='" + project + "'>\n");
 			writer.write("<param name='al_main' value='" + project.get("main") + "'>\n");
 			writer.write("<param name='al_jars' value='");
@@ -1042,6 +1045,7 @@ public class Scar {
 			} catch (Exception ignored) {
 			}
 		}
+		return appletDir;
 	}
 
 	/**

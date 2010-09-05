@@ -127,9 +127,10 @@ public class Project {
 	}
 
 	public String get (Object key, String defaultValue) {
-		String value = (String)getObject(key);
+		Object value = getObject(key);
 		if (value == null) return defaultValue;
-		return value;
+		if (!(value instanceof String)) return value.toString(); 
+		return (String)value;
 	}
 
 	public int getInt (Object key) {
@@ -137,9 +138,10 @@ public class Project {
 	}
 
 	public int getInt (Object key, int defaultValue) {
-		Integer value = (Integer)getObject(key);
+		Object value = getObject(key);
 		if (value == null) return defaultValue;
-		return value;
+		if (value instanceof String) value = Integer.parseInt((String)value);
+		return (Integer)value;
 	}
 
 	public float getFloat (Object key) {
@@ -147,9 +149,10 @@ public class Project {
 	}
 
 	public float getFloat (Object key, float defaultValue) {
-		Float value = (Float)getObject(key);
+		Object value = getObject(key);
 		if (value == null) return defaultValue;
-		return value;
+		if (value instanceof String) value = Float.parseFloat((String)value);
+		return (Float)value;
 	}
 
 	public boolean getBoolean (Object key) {
@@ -157,9 +160,10 @@ public class Project {
 	}
 
 	public boolean getBoolean (Object key, boolean defaultValue) {
-		Boolean value = (Boolean)getObject(key);
+		Object value = getObject(key);
 		if (value == null) return defaultValue;
-		return value;
+		if (value instanceof String) value = Boolean.parseBoolean((String)value);
+		return (Boolean)value;
 	}
 
 	/**
