@@ -998,9 +998,10 @@ public class Scar {
 			sign(unpack200(pack200(unsign(jarFile))), keystoreFile, alias, password);
 			String fileName = fileName(jarFile);
 			if (fileName.equals("lwjgl_util_applet.jar") || fileName.equals("lzma.jar")) continue;
-			lzma(jarFile, jarFile + ".lzma");
-			if (fileName.contains("native")) continue;
-			lzma(pack200(jarFile));
+			if (fileName.contains("native"))
+				lzma(jarFile);
+			else
+				lzma(pack200(jarFile));
 		}
 
 		if (!new Paths(appletDir, "*.html", "*.htm").isEmpty()) return appletDir;
