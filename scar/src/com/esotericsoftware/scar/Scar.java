@@ -474,22 +474,13 @@ public class Scar {
 	}
 
 	/**
-	 * Creates a new keystore in the temp directory for signing JARs. The title is used for the alias and "password" is used for
-	 * the password.
+	 * Creates a new keystore for signing JARs. If the keystore file already exists, no action will be taken.
 	 * @return The path to the keystore file.
 	 */
-	static public String createTempKeystore (String company, String title) throws IOException {
-		String keystoreFile = File.createTempFile("jws", "keystore").getAbsolutePath();
-		return createKeystore(keystoreFile, title, "password", company, title);
-	}
-
-	/**
-	 * Creates a new keystore for signing JARs.
-	 * @return The path to the keystore file.
-	 */
-	static public String createKeystore (String keystoreFile, String alias, String password, String company, String title)
+	static public String keystore (String keystoreFile, String alias, String password, String company, String title)
 		throws IOException {
 		if (keystoreFile == null) throw new IllegalArgumentException("keystoreFile cannot be null.");
+		if (fileExists(keystoreFile)) return keystoreFile;
 		if (alias == null) throw new IllegalArgumentException("alias cannot be null.");
 		if (password == null) throw new IllegalArgumentException("password cannot be null.");
 		if (password.length() < 6) throw new IllegalArgumentException("password must be 6 or more characters.");
@@ -786,16 +777,6 @@ public class Scar {
 	}
 
 	/**
-	 * Same as {@link #jws(Project, boolean, String, String, String)}, but uses a {@link #createTempKeystore(String, String)
-	 * temporary keystore}.
-	 */
-	static public void jws (Project project, boolean pack, String company, String title) throws IOException {
-		String keystoreFile = createTempKeystore(company, title);
-		jws(project, pack, keystoreFile, title, "password");
-		delete(keystoreFile);
-	}
-
-	/**
 	 * Copies all the JAR and JNLP files from the "dist" directory to a "jws" directory under the "target" directory. It then
 	 * creates a temporary keystore and signs each JAR. If the "pack" parameter is true, it also compresses each JAR using pack200
 	 * and GZIP.
@@ -968,18 +949,6 @@ public class Scar {
 			} catch (Exception ignored) {
 			}
 		}
-	}
-
-	/**
-	 * Same as {@link #lwjglApplet(Project, String, String, String)} but uses a {@link #createTempKeystore(String, String)
-	 * temporary keystore}.
-	 * @return The path to the "applet-lwjgl" directory.
-	 */
-	static public String lwjglApplet (Project project, String company, String title) throws IOException {
-		String keystoreFile = createTempKeystore(company, title);
-		String appletDir = lwjglApplet(project, keystoreFile, title, "password");
-		delete(keystoreFile);
-		return appletDir;
 	}
 
 	static public String lwjglApplet (Project project, String keystoreFile, String alias, String password) throws IOException {
@@ -1386,8 +1355,8 @@ public class Scar {
 			}, null, null, null, Arrays.asList(new JavaFileObject[] {javaObject})).call();
 
 			// Load class.
-			Class containerClass = new URLClassLoader(classpathURLs.toArray(new URL[classpathURLs.size()]), Scar.class
-				.getClassLoader()) {
+			Class containerClass = new URLClassLoader(classpathURLs.toArray(new URL[classpathURLs.size()]),
+				Scar.class.getClassLoader()) {
 				protected synchronized Class<?> loadClass (String name, boolean resolve) throws ClassNotFoundException {
 					// Look in this classloader before the parent.
 					Class c = findLoadedClass(name);
