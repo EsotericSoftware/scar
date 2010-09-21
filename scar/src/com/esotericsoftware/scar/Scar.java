@@ -40,9 +40,9 @@ import javax.tools.FileObject;
 import javax.tools.ForwardingJavaFileManager;
 import javax.tools.JavaCompiler;
 import javax.tools.JavaFileObject;
+import javax.tools.JavaFileObject.Kind;
 import javax.tools.SimpleJavaFileObject;
 import javax.tools.ToolProvider;
-import javax.tools.JavaFileObject.Kind;
 
 import SevenZip.LzmaAlone;
 
@@ -1290,7 +1290,7 @@ public class Scar {
 		try {
 			// Wrap code in a class.
 			StringBuilder classBuffer = new StringBuilder(2048);
-			classBuffer.append("import com.esotericsoftware.scar.Scar;\n");
+			classBuffer.append("import com.esotericsoftware.scar.*;\n");
 			classBuffer.append("import com.esotericsoftware.minlog.Log;\n");
 			classBuffer.append("import com.esotericsoftware.wildcard.Paths;\n");
 			classBuffer.append("import static com.esotericsoftware.scar.Scar.*;\n");
@@ -1389,7 +1389,7 @@ public class Scar {
 				parameterTypes[i++] = object.getClass();
 			}
 			containerClass.getMethod("execute", parameterTypes).invoke(containerClass.newInstance(), parameterValues);
-		} catch (Exception ex) {
+		} catch (Throwable ex) {
 			throw new RuntimeException("Error executing code:\n" + code, ex);
 		}
 	}
