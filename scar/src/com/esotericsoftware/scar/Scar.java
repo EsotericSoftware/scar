@@ -9,6 +9,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
@@ -530,7 +531,7 @@ public class Scar {
 
 		if (DEBUG) debug("scar", "Signing JAR (" + keystoreFile + ", " + alias + ":" + password + "): " + jarFile);
 
-		executeCommand("jarsigner", "-keystore", keystoreFile, "-storepass", password, "-keypass", password, jarFile, alias);
+		shell("jarsigner", "-keystore", keystoreFile, "-storepass", password, "-keypass", password, jarFile, alias);
 		return jarFile;
 	}
 
@@ -555,8 +556,8 @@ public class Scar {
 
 		if (DEBUG) debug("scar", "Packing JAR: " + jarFile + " -> " + packedFile);
 
-		executeCommand("pack200", "--no-gzip", "--segment-limit=-1", "--no-keep-file-order", "--effort=7",
-			"--modification-time=latest", packedFile, jarFile);
+		shell("pack200", "--no-gzip", "--segment-limit=-1", "--no-keep-file-order", "--effort=7", "--modification-time=latest",
+			packedFile, jarFile);
 		return packedFile;
 	}
 
@@ -584,7 +585,7 @@ public class Scar {
 
 		if (DEBUG) debug("scar", "Unpacking JAR: " + packedFile + " -> " + jarFile);
 
-		executeCommand("unpack200", packedFile, jarFile);
+		shell("unpack200", packedFile, jarFile);
 		return jarFile;
 	}
 
@@ -1049,7 +1050,7 @@ public class Scar {
 	 * Executes the specified shell command. {@link #resolvePath(String)} is used to locate the file to execute. If not found, on
 	 * Windows the same filename with an "exe" extension is also tried.
 	 */
-	static public void executeCommand (String... command) throws IOException {
+	static public void shell (String... command) throws IOException {
 		if (command == null) throw new IllegalArgumentException("command cannot be null.");
 		if (command.length == 0) throw new IllegalArgumentException("command cannot be empty.");
 
@@ -1221,6 +1222,28 @@ public class Scar {
 	}
 
 	/**
+	 * Returns the textual contents of the specified file.
+	 */
+	static public String fileContents (String path) throws IOException {
+		StringBuilder stringBuffer = new StringBuilder(4096);
+		FileReader reader = new FileReader(path);
+		try {
+			char[] buffer = new char[2048];
+			while (true) {
+				int length = reader.read(buffer);
+				if (length == -1) break;
+				stringBuffer.append(buffer, 0, length);
+			}
+		} finally {
+			try {
+				reader.close();
+			} catch (Exception ignored) {
+			}
+		}
+		return stringBuffer.toString();
+	}
+
+	/**
 	 * Returns only the filename portion of the specified path.
 	 */
 	static public String fileName (String path) {
@@ -1239,7 +1262,7 @@ public class Scar {
 	}
 
 	/**
-	 * Returns only the filename portion of the specified path, with the extension, if any.
+	 * Returns only the filename portion of the specified path, without the extension, if any.
 	 */
 	static public String fileWithoutExtension (String file) {
 		if (file == null) throw new IllegalArgumentException("fileName cannot be null.");
