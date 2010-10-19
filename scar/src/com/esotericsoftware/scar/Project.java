@@ -51,6 +51,10 @@ public class Project {
 	 */
 	public void load (String path) throws IOException {
 		File file = new File(path);
+		if (!file.exists() && !path.endsWith(".yaml")) {
+			path += ".yaml";
+			file = new File(path);
+		}
 		if (!file.exists()) throw new IllegalArgumentException("Project not found: " + file.getAbsolutePath());
 		if (file.isDirectory()) {
 			file = new File(file, "project.yaml");
@@ -128,7 +132,7 @@ public class Project {
 	public String get (Object key, String defaultValue) {
 		Object value = getObject(key);
 		if (value == null) return defaultValue;
-		if (!(value instanceof String)) return value.toString(); 
+		if (!(value instanceof String)) return value.toString();
 		return (String)value;
 	}
 
