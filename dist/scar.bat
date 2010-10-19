@@ -1,1 +1,1 @@
-java -jar scar.jar
+java -jar %~dp0scar.jar

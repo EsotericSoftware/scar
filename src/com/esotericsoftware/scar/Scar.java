@@ -37,6 +37,8 @@ import java.util.zip.GZIPOutputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
+import javax.tools.Diagnostic;
+import javax.tools.DiagnosticCollector;
 import javax.tools.FileObject;
 import javax.tools.ForwardingJavaFileManager;
 import javax.tools.JavaCompiler;
@@ -160,8 +162,13 @@ public class Scar {
 
 		Project project = new Project();
 		project.replace(defaults);
-		for (String include : actualProject.getList("include"))
-			project.replace(project(actualProject.path(include), defaults));
+		for (String include : actualProject.getList("include")) {
+			try {
+				project.replace(project(actualProject.path(include), defaults));
+			} catch (RuntimeException ex) {
+				throw new RuntimeException("Error loading included project: " + actualProject.path(include), ex);
+			}
+		}
 		project.replace(actualProject);
 		return project;
 	}
@@ -778,9 +785,9 @@ public class Scar {
 	}
 
 	/**
-	 * Copies all the JAR and JNLP files from the "dist" directory to a "jws" directory under the "target" directory. It then
-	 * creates a temporary keystore and signs each JAR. If the "pack" parameter is true, it also compresses each JAR using pack200
-	 * and GZIP.
+	 * Copies all the JAR and JNLP files from the "dist" directory to a "jws" directory under the "target" directory. It then uses
+	 * the specified keystore to sign each JAR. If the "pack" parameter is true, it also compresses each JAR using pack200 and
+	 * GZIP.
 	 */
 	static public void jws (Project project, boolean pack, String keystoreFile, String alias, String password) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
@@ -918,28 +925,28 @@ public class Scar {
 			if (nativePaths.count() == 1) {
 				writer.write("<resources os='Windows'>\n");
 				writer.write("\t<j2se href='http://java.sun.com/products/autodl/j2se' version='1.5+' max-heap-size='128m'/>\n");
-				writer.write("\t<nativelib href='" + nativePaths.getNames().get(0) + "'/>\n");
+				writer.write("\t<nativelib href='" + path + nativePaths.getNames().get(0) + "'/>\n");
 				writer.write("</resources>\n");
 			}
 			nativePaths = new Paths(jwsDir, "*native*mac*", "*mac*native*");
 			if (nativePaths.count() == 1) {
 				writer.write("<resources os='Mac'>\n");
 				writer.write("\t<j2se href='http://java.sun.com/products/autodl/j2se' version='1.5+' max-heap-size='128m'/>\n");
-				writer.write("\t<nativelib href='" + nativePaths.getNames().get(0) + "'/>\n");
+				writer.write("\t<nativelib href='" + path + nativePaths.getNames().get(0) + "'/>\n");
 				writer.write("</resources>\n");
 			}
 			nativePaths = new Paths(jwsDir, "*native*linux*", "*linux*native*");
 			if (nativePaths.count() == 1) {
 				writer.write("<resources os='Linux'>\n");
 				writer.write("\t<j2se href='http://java.sun.com/products/autodl/j2se' version='1.5+' max-heap-size='128m'/>\n");
-				writer.write("\t<nativelib href='" + nativePaths.getNames().get(0) + "'/>\n");
+				writer.write("\t<nativelib href='" + path + nativePaths.getNames().get(0) + "'/>\n");
 				writer.write("</resources>\n");
 			}
 			nativePaths = new Paths(jwsDir, "*native*solaris*", "*solaris*native*");
 			if (nativePaths.count() == 1) {
 				writer.write("<resources os='SunOS'>\n");
 				writer.write("\t<j2se href='http://java.sun.com/products/autodl/j2se' version='1.5+' max-heap-size='128m'/>\n");
-				writer.write("\t<nativelib href='" + nativePaths.getNames().get(0) + "'/>\n");
+				writer.write("\t<nativelib href='" + path + nativePaths.getNames().get(0) + "'/>\n");
 				writer.write("</resources>\n");
 			}
 			writer.write("<application-desc main-class='" + project.get("main") + "'/>\n");
@@ -1008,6 +1015,8 @@ public class Scar {
 			writer.write("<param name='al_logo' value='appletlogo.png'>\n");
 			writer.write("<param name='al_progressbar' value='appletprogress.gif'>\n");
 			writer.write("<param name='separate_jvm' value='true'>\n");
+			writer
+				.write("<param name='java_arguments' value='-Dsun.java2d.noddraw=true -Dsun.awt.noerasebackground=true -Dsun.java2d.d3d=false -Dsun.java2d.opengl=false -Dsun.java2d.pmoffscreen=false'>\n");
 			writer.write("</applet>\n");
 			writer.write("</body></html>\n");
 		} finally {
@@ -1318,17 +1327,20 @@ public class Scar {
 			classBuffer.append("import com.esotericsoftware.wildcard.Paths;\n");
 			classBuffer.append("import static com.esotericsoftware.scar.Scar.*;\n");
 			classBuffer.append("import static com.esotericsoftware.minlog.Log.*;\n");
-			classBuffer.append("public class Container {\n");
+			classBuffer.append("public class Generated {\n");
+			int templateStartLines = 6;
 			classBuffer.append("public void execute (");
 			int i = 0;
 			for (Entry<String, Object> entry : parameters.entrySet()) {
 				if (i++ > 0) classBuffer.append(',');
 				classBuffer.append('\n');
+				templateStartLines++;
 				classBuffer.append(entry.getValue().getClass().getName());
 				classBuffer.append(' ');
 				classBuffer.append(entry.getKey());
 			}
 			classBuffer.append("\n) throws Exception {\n");
+			templateStartLines += 2;
 
 			// Append code, collecting imports statements and classpath URLs.
 			StringBuilder importBuffer = new StringBuilder(512);
@@ -1362,7 +1374,7 @@ public class Scar {
 
 			// Compile class.
 			final ByteArrayOutputStream output = new ByteArrayOutputStream(32 * 1024);
-			final SimpleJavaFileObject javaObject = new SimpleJavaFileObject(URI.create("Container.java"), Kind.SOURCE) {
+			final SimpleJavaFileObject javaObject = new SimpleJavaFileObject(URI.create("Generated.java"), Kind.SOURCE) {
 				public OutputStream openOutputStream () {
 					return output;
 				}
@@ -1371,14 +1383,27 @@ public class Scar {
 					return classCode;
 				}
 			};
+			DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector();
 			compiler.getTask(null, new ForwardingJavaFileManager(compiler.getStandardFileManager(null, null, null)) {
 				public JavaFileObject getJavaFileForOutput (Location location, String className, Kind kind, FileObject sibling) {
 					return javaObject;
 				}
-			}, null, null, null, Arrays.asList(new JavaFileObject[] {javaObject})).call();
+			}, diagnostics, null, null, Arrays.asList(new JavaFileObject[] {javaObject})).call();
+
+			if (!diagnostics.getDiagnostics().isEmpty()) {
+				StringBuilder buffer = new StringBuilder(1024);
+				for (Diagnostic diagnostic : diagnostics.getDiagnostics()) {
+					if (buffer.length() > 0) buffer.append("\n");
+					buffer.append("Line ");
+					buffer.append(diagnostic.getLineNumber() - templateStartLines);
+					buffer.append(": ");
+					buffer.append(diagnostic.getMessage(null).replaceAll("^Generated.java:\\d+:\\d* ", ""));
+				}
+				throw new RuntimeException("Compilation errors:\n" + buffer);
+			}
 
 			// Load class.
-			Class containerClass = new URLClassLoader(classpathURLs.toArray(new URL[classpathURLs.size()]),
+			Class generatedClass = new URLClassLoader(classpathURLs.toArray(new URL[classpathURLs.size()]),
 				Scar.class.getClassLoader()) {
 				protected synchronized Class<?> loadClass (String name, boolean resolve) throws ClassNotFoundException {
 					// Look in this classloader before the parent.
@@ -1395,13 +1420,13 @@ public class Scar {
 				}
 
 				protected Class<?> findClass (String name) throws ClassNotFoundException {
-					if (name.equals("Container")) {
+					if (name.equals("Generated")) {
 						byte[] bytes = output.toByteArray();
 						return defineClass(name, bytes, 0, bytes.length);
 					}
 					return super.findClass(name);
 				}
-			}.loadClass("Container");
+			}.loadClass("Generated");
 
 			// Execute.
 			Class[] parameterTypes = new Class[parameters.size()];
@@ -1411,9 +1436,9 @@ public class Scar {
 				parameterValues[i] = object;
 				parameterTypes[i++] = object.getClass();
 			}
-			containerClass.getMethod("execute", parameterTypes).invoke(containerClass.newInstance(), parameterValues);
+			generatedClass.getMethod("execute", parameterTypes).invoke(generatedClass.newInstance(), parameterValues);
 		} catch (Throwable ex) {
-			throw new RuntimeException("Error executing code:\n" + code, ex);
+			throw new RuntimeException("Error executing code:\n" + code.trim(), ex);
 		}
 	}
 
