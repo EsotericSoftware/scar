@@ -16,14 +16,16 @@ import java.util.regex.Pattern;
 import com.esotericsoftware.wildcard.Paths;
 import com.esotericsoftware.yamlbeans.YamlException;
 import com.esotericsoftware.yamlbeans.YamlReader;
+import com.esotericsoftware.yamlbeans.parser.Parser.ParserException;
+import com.esotericsoftware.yamlbeans.tokenizer.Tokenizer.TokenizerException;
 
 /**
  * Generic data structure that contains information needed to perform tasks.
  */
 public class Project {
-	static private Pattern formatPattern = Pattern.compile("([^\\{]*)\\{([^\\}]+)\\}([^\\{]*)");
+	static private Pattern formatPattern = Pattern.compile("([^\\$]*)\\$([^\\$]+)\\$([^\\$]*)");
 
-	private String dir;
+	String dir;
 	private HashMap data = new HashMap();
 	private String document;
 
@@ -61,10 +63,10 @@ public class Project {
 			if (file.exists())
 				load(file.getPath());
 			else
-				dir = Scar.canonical(path) + "/";
+				dir = Scar.canonical(path);
 			return;
 		}
-		dir = new File(Scar.canonical(path)).getParent() + "/";
+		dir = new File(Scar.canonical(path)).getParent().replace('\\', '/');
 
 		BufferedReader fileReader = new BufferedReader(new FileReader(path));
 		try {
@@ -76,13 +78,21 @@ public class Project {
 				buffer.append('\n');
 			}
 
-			YamlReader yamlReader = new YamlReader(new StringReader(buffer.toString()));
+			YamlReader yamlReader = new YamlReader(new StringReader(buffer.toString())) {
+				protected Object readValue (Class type, Class elementType, Class defaultType) throws YamlException, ParserException,
+					TokenizerException {
+					Object value = super.readValue(type, elementType, defaultType);
+					if (value instanceof String) value = ((String)value).replaceAll("\\$dir\\$", dir);
+					return value;
+				}
+			};
 			try {
 				data = yamlReader.read(HashMap.class);
 				yamlReader.close();
 			} catch (YamlException ex) {
 				throw new IOException("Error reading YAML file: " + new File(path).getAbsolutePath(), ex);
 			}
+			if (data == null) data = new HashMap();
 
 			buffer.setLength(0);
 			while (true) {
@@ -254,6 +264,7 @@ public class Project {
 	 * Returns the specified path if it is an absolute path, otherwise returns the path relative to this project's directory.
 	 */
 	public String path (String path) {
+		path = format(path);
 		if (dir == null) return path;
 		int pipeIndex = path.indexOf('|');
 		if (pipeIndex > -1) {
@@ -261,7 +272,7 @@ public class Project {
 			return path(path.substring(0, pipeIndex)) + path.substring(pipeIndex);
 		}
 		if (new File(path).isAbsolute()) return path;
-		return dir + path;
+		return dir + "/" + path;
 	}
 
 	public void set (Object key, Object object) {
@@ -313,7 +324,9 @@ public class Project {
 			buffer.append(matcher.group(1));
 			String name = matcher.group(2);
 			Object value = data.get(name);
-			if (value != null)
+			if (value instanceof String)
+				buffer.append(format((String)value));
+			else if (value != null)
 				buffer.append(value);
 			else
 				buffer.append(name);

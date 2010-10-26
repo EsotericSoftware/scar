@@ -32,6 +32,8 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarInputStream;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 import java.util.zip.ZipEntry;
@@ -51,7 +53,7 @@ import SevenZip.LzmaAlone;
 
 import com.esotericsoftware.wildcard.Paths;
 
-// BOZO - Add javadocs method and add javadocs to dist.
+// BOZO - Add javadocs method.
 
 /**
  * Provides utility methods for common Java build tasks.
@@ -89,6 +91,11 @@ public class Scar {
 	 * True if running on a Windows OS.
 	 */
 	static public final boolean isWindows = System.getProperty("os.name").toLowerCase().contains("windows");
+
+	/**
+	 * List of project names that have been built. {@link #buildDependencies(Project)} will skip any projects with a matching name.
+	 */
+	static public final List<String> builtProjects = new ArrayList();
 
 	static {
 		Paths.setDefaultGlobExcludes("**/.svn/**");
@@ -130,7 +137,11 @@ public class Scar {
 
 		// Remove dependency if a JAR of the same name is on the classpath.
 		Paths classpath = project.getPaths("classpath");
-		classpath.add(dependencyClasspaths(project, classpath, false));
+		for (String dependency : project.getList("dependencies")) {
+			Project dependencyProject = project(project.path(dependency));
+
+		}
+		classpath.add(dependencyClasspaths(project, classpath, false, false));
 		for (String dependency : project.getList("dependencies")) {
 			String dependencyName = project(project.path(dependency)).get("name");
 			for (String classpathFile : classpath) {
@@ -138,14 +149,16 @@ public class Scar {
 				int dashIndex = name.lastIndexOf('-');
 				if (dashIndex != -1) name = name.substring(0, dashIndex);
 				if (name.equals(dependencyName)) {
-					if (TRACE)
-						trace("Ignoring " + project + " dependency: " + dependencyName + " (already on classpath: " + classpathFile
+					if (DEBUG)
+						debug("Ignoring " + project + " dependency: " + dependencyName + " (already on classpath: " + classpathFile
 							+ ")");
 					project.remove("dependencies", dependency);
 					break;
 				}
 			}
 		}
+
+		if (TRACE) trace("scar", "Project: " + project + "\n" + project);
 
 		return project;
 	}
@@ -162,6 +175,20 @@ public class Scar {
 
 		Project project = new Project();
 		project.replace(defaults);
+
+		File parent = new File(actualProject.getDirectory()).getParentFile();
+		while (parent != null) {
+			File includeFile = new File(parent, "include.yaml");
+			if (includeFile.exists()) {
+				try {
+					project.replace(project(includeFile.getAbsolutePath(), defaults));
+				} catch (RuntimeException ex) {
+					throw new RuntimeException("Error loading included project: " + includeFile.getAbsolutePath(), ex);
+				}
+			}
+			parent = parent.getParentFile();
+		}
+
 		for (String include : actualProject.getList("include")) {
 			try {
 				project.replace(project(actualProject.path(include), defaults));
@@ -205,30 +232,34 @@ public class Scar {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
 
 		if (INFO) info("scar", "Clean: " + project);
-		new Paths(project.format("{target}")).delete();
+		if (TRACE) trace("scar", "Deleting: " + project.path("$target$"));
+		new Paths(project.path("$target$")).delete();
 	}
 
 	/**
 	 * Computes the classpath for the specified project and all its dependency projects, recursively.
 	 */
-	static public Paths classpath (Project project) throws IOException {
+	static public Paths classpath (Project project, boolean errorIfDepenenciesNotBuilt) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
 
 		Paths classpath = project.getPaths("classpath");
-		classpath.add(dependencyClasspaths(project, classpath, true));
+		classpath.add(dependencyClasspaths(project, classpath, true, errorIfDepenenciesNotBuilt));
 		return classpath;
 	}
 
 	/**
 	 * Computes the classpath for all the dependencies of the specified project, recursively.
 	 */
-	static private Paths dependencyClasspaths (Project project, Paths paths, boolean includeDependencyJAR) throws IOException {
+	static private Paths dependencyClasspaths (Project project, Paths paths, boolean includeDependencyJAR,
+		boolean errorIfDepenenciesNotBuilt) throws IOException {
 		for (String dependency : project.getList("dependencies")) {
 			Project dependencyProject = project(project.path(dependency));
-			String dependencyTarget = dependencyProject.format("{target}/");
-			if (!fileExists(dependencyTarget)) throw new RuntimeException("Dependency has not been built: " + dependency);
+			String dependencyTarget = dependencyProject.path("$target$/");
+			if (errorIfDepenenciesNotBuilt && !fileExists(dependencyTarget))
+				throw new RuntimeException("Dependency has not been built: " + dependency + "\nAbsolute dependency path: "
+					+ canonical(dependency) + "\nMissing dependency target: " + canonical(dependencyTarget));
 			if (includeDependencyJAR) paths.glob(dependencyTarget, "*.jar");
-			paths.add(classpath(dependencyProject));
+			paths.add(classpath(dependencyProject, errorIfDepenenciesNotBuilt));
 		}
 		return paths;
 	}
@@ -243,7 +274,7 @@ public class Scar {
 	static public String compile (Project project) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
 
-		Paths classpath = classpath(project);
+		Paths classpath = classpath(project, true);
 		Paths source = project.getPaths("source");
 
 		if (INFO) info("scar", "Compile: " + project);
@@ -252,7 +283,13 @@ public class Scar {
 			debug("scar", "Classpath: " + classpath);
 		}
 
-		String classesDir = mkdir(project.format("{target}/classes/"));
+		String classesDir = mkdir(project.path("$target$/classes/"));
+
+		if (source.isEmpty()) {
+			if (WARN) warn("No source files found.");
+			return classesDir;
+		}
+
 		File tempFile = File.createTempFile("scar", "compile");
 
 		ArrayList<String> args = new ArrayList();
@@ -272,7 +309,7 @@ public class Scar {
 		if (compiler == null)
 			throw new RuntimeException("No compiler available. Ensure you are running from a 1.6+ JDK, and not a JRE.");
 		if (compiler.run(null, null, null, args.toArray(new String[args.size()])) != 0) {
-			throw new RuntimeException("Error during compilation of project: " + project.get("name") + "\nSource: " + source.count()
+			throw new RuntimeException("Error during compilation of project: " + project + "\nSource: " + source.count()
 				+ " files\nClasspath: " + classpath);
 		}
 		try {
@@ -295,17 +332,17 @@ public class Scar {
 
 		if (INFO) info("scar", "JAR: " + project);
 
-		String jarDir = mkdir(project.format("{target}/jar/"));
+		String jarDir = mkdir(project.path("$target$/jar/"));
 
-		String classesDir = project.format("{target}/classes/");
+		String classesDir = project.path("$target$/classes/");
 		new Paths(classesDir, "**/*.class").copyTo(jarDir);
 		project.getPaths("resources").copyTo(jarDir);
 
 		String jarFile;
 		if (project.has("version"))
-			jarFile = project.format("{target}/{name}-{version}.jar");
+			jarFile = project.path("$target$/$name$-$version$.jar");
 		else
-			jarFile = project.format("{target}/{name}.jar");
+			jarFile = project.path("$target$/$name$.jar");
 
 		File manifestFile = new File(jarDir, "META-INF/MANIFEST.MF");
 		if (!manifestFile.exists()) {
@@ -320,7 +357,7 @@ public class Scar {
 				StringBuilder buffer = new StringBuilder(512);
 				buffer.append(fileName(jarFile));
 				buffer.append(" .");
-				Paths classpath = classpath(project);
+				Paths classpath = classpath(project, true);
 				for (String name : classpath.getRelativePaths()) {
 					buffer.append(' ');
 					buffer.append(name);
@@ -404,12 +441,12 @@ public class Scar {
 
 		if (INFO) info("scar", "Dist: " + project);
 
-		String distDir = mkdir(project.format("{target}/dist/"));
-		classpath(project).copyTo(distDir);
+		String distDir = mkdir(project.path("$target$/dist/"));
+		classpath(project, true).copyTo(distDir);
 		Paths distPaths = project.getPaths("dist");
 		dependencyDistPaths(project, distPaths);
 		distPaths.copyTo(distDir);
-		new Paths(project.format("{target}"), "*.jar").copyTo(distDir);
+		new Paths(project.path("$target$"), "*.jar").copyTo(distDir);
 		return distDir;
 	}
 
@@ -418,7 +455,7 @@ public class Scar {
 
 		for (String dependency : project.getList("dependencies")) {
 			Project dependencyProject = project(project.path(dependency));
-			String dependencyTarget = dependencyProject.format("{target}/");
+			String dependencyTarget = dependencyProject.path("$target$/");
 			if (!fileExists(dependencyTarget)) throw new RuntimeException("Dependency has not been built: " + dependency);
 			paths.glob(dependencyTarget + "dist");
 			paths.add(dependencyDistPaths(dependencyProject, paths));
@@ -467,6 +504,8 @@ public class Scar {
 			jarInput.close();
 			jarOutput.close();
 			copyFile(tempFile.getAbsolutePath(), jarFile);
+		} catch (IOException ex) {
+			throw new IOException("Error unsigning JAR file: " + jarFile, ex);
 		} finally {
 			try {
 				if (jarInput != null) jarInput.close();
@@ -798,8 +837,8 @@ public class Scar {
 
 		if (INFO) info("scar", "JWS: " + project);
 
-		String jwsDir = mkdir(project.format("{target}/jws/"));
-		String distDir = project.format("{target}/dist/");
+		String jwsDir = mkdir(project.path("$target$/jws/"));
+		String distDir = project.path("$target$/dist/");
 		new Paths(distDir, "*.jar", "*.jnlp").copyTo(jwsDir);
 		for (String file : new Paths(jwsDir, "*.jar"))
 			sign(unpack200(pack200(unsign(file))), keystoreFile, alias, password);
@@ -825,7 +864,7 @@ public class Scar {
 
 		if (INFO) info("scar", "JWS htaccess: " + project);
 
-		String jwsDir = mkdir(project.format("{target}/jws/"));
+		String jwsDir = mkdir(project.path("$target$/jws/"));
 		for (String packedFile : new Paths(jwsDir + "packed", "*.jar.pack.gz")) {
 			String packedFileName = fileName(packedFile);
 			String jarFileName = substring(packedFileName, 0, -8);
@@ -889,7 +928,7 @@ public class Scar {
 		String path = url.substring(firstSlash + 1, lastSlash + 1);
 		String jnlpFile = url.substring(lastSlash + 1);
 
-		String jwsDir = mkdir(project.format("{target}/jws/"));
+		String jwsDir = mkdir(project.path("$target$/jws/"));
 		FileWriter writer = new FileWriter(jwsDir + jnlpFile);
 		try {
 			writer.write("<?xml version='1.0' encoding='utf-8'?>\n");
@@ -911,9 +950,9 @@ public class Scar {
 			// JAR with main class first.
 			String projectJarName;
 			if (project.has("version"))
-				projectJarName = project.format("{name}-{version}.jar");
+				projectJarName = project.format("$name$-$version$.jar");
 			else
-				projectJarName = project.format("{name}.jar");
+				projectJarName = project.format("$name$.jar");
 			writer.write("\t<jar href='" + path + projectJarName + "'/>\n");
 
 			// Rest of JARs, except natives.
@@ -968,8 +1007,8 @@ public class Scar {
 
 		if (INFO) info("scar", "LWJGL applet: " + project);
 
-		String appletDir = mkdir(project.format("{target}/applet-lwjgl/"));
-		String distDir = project.format("{target}/dist/");
+		String appletDir = mkdir(project.path("$target$/applet-lwjgl/"));
+		String distDir = project.path("$target$/dist/");
 		new Paths(distDir, "**/*.jar", "*.html", "*.htm").flatten().copyTo(appletDir);
 		for (String jarFile : new Paths(appletDir, "*.jar")) {
 			sign(unpack200(pack200(unsign(jarFile))), keystoreFile, alias, password);
@@ -1035,24 +1074,54 @@ public class Scar {
 	 * <p>
 	 * Note: Files with the same path in different JARs will be overwritten. Files in the project's JAR will never be overwritten,
 	 * but may overwrite other files.
+	 * @param excludeJARs The names of any JARs to exclude.
 	 */
-	static public void oneJAR (Project project) throws IOException {
+	static public void oneJAR (Project project, String... excludeJARs) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
 
 		if (INFO) info("scar", "One JAR: " + project);
 
-		String onejarDir = mkdir(project.format("{target}/onejar/"));
-		String distDir = project.format("{target}/dist/");
+		String onejarDir = mkdir(project.path("$target$/onejar/"));
+		String distDir = project.path("$target$/dist/");
 		String projectJarName;
 		if (project.has("version"))
-			projectJarName = project.format("{name}-{version}.jar");
+			projectJarName = project.format("$name$-$version$.jar");
 		else
-			projectJarName = project.format("{name}.jar");
-		for (String jarFile : new Paths(distDir, "*.jar", "!" + projectJarName))
+			projectJarName = project.format("$name$.jar");
+
+		ArrayList<String> processedJARs = new ArrayList();
+		outer:
+		for (String jarFile : new Paths(distDir, "*.jar", "!" + projectJarName)) {
+			String jarName = fileName(jarFile);
+			for (String exclude : excludeJARs)
+				if (jarName.equals(exclude)) continue outer;
 			unzip(jarFile, onejarDir);
+			processedJARs.add(jarFile);
+		}
 		unzip(distDir + projectJarName, onejarDir);
-		new Paths(distDir, "*.jar").delete();
+
+		for (String jarFile : processedJARs)
+			delete(jarFile);
+
 		jar(distDir + projectJarName, new Paths(onejarDir));
+	}
+
+	/**
+	 * Splits the specified command at spaces that are not surrounded by quotes and passes the result to {@link #shell(String...)}.
+	 */
+	static public void shell (String command) throws IOException {
+		List<String> matchList = new ArrayList<String>();
+		Pattern regex = Pattern.compile("[^\\s\"']+|\"([^\"]*)\"|'([^']*)'");
+		Matcher regexMatcher = regex.matcher(command);
+		while (regexMatcher.find()) {
+			if (regexMatcher.group(1) != null)
+				matchList.add(regexMatcher.group(1));
+			else if (regexMatcher.group(2) != null)
+				matchList.add(regexMatcher.group(2));
+			else
+				matchList.add(regexMatcher.group());
+		}
+		shell(matchList.toArray(new String[matchList.size()]));
 	}
 
 	/**
@@ -1079,7 +1148,7 @@ public class Scar {
 			trace("scar", "Executing command: " + buffer);
 		}
 
-		Process process = Runtime.getRuntime().exec(command);
+		Process process = new ProcessBuilder(command).start();
 		try {
 			process.waitFor();
 		} catch (InterruptedException ignored) {
@@ -1451,11 +1520,16 @@ public class Scar {
 		for (String dependency : project.getList("dependencies")) {
 			Project dependencyProject = project(project.path(dependency));
 
+			if (builtProjects.contains(dependencyProject.get("name"))) {
+				if (DEBUG) debug("scar", "Dependency project already built: " + dependencyProject);
+				return;
+			}
+
 			String jarFile;
 			if (dependencyProject.has("version"))
-				jarFile = dependencyProject.format("{target}/{name}-{version}.jar");
+				jarFile = dependencyProject.path("$target$/$name$-$version$.jar");
 			else
-				jarFile = dependencyProject.format("{target}/{name}.jar");
+				jarFile = dependencyProject.path("$target$/$name$.jar");
 
 			if (DEBUG) debug("Building dependency: " + dependencyProject);
 			build(dependencyProject);
@@ -1463,24 +1537,38 @@ public class Scar {
 	}
 
 	/**
-	 * Executes Java code in the specified project's document, or if there is no document it executes the buildDependencies, clean,
-	 * compile, jar, and dist utility metshods.
+	 * Calls {@link #project(String)} and then {@link #build(Project)}.
+	 */
+	static public void build (String path) throws IOException {
+		build(project(path));
+	}
+
+	/**
+	 * Executes the buildDependencies, clean, compile, jar, and dist utility metshods.
 	 */
 	static public void build (Project project) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
 
-		String code = project.getDocument();
-		if (code != null && !code.trim().isEmpty()) {
-			HashMap<String, Object> parameters = new HashMap();
-			parameters.put("project", project);
-			executeCode(project, code, parameters);
-			return;
-		}
 		buildDependencies(project);
 		clean(project);
 		compile(project);
 		jar(project);
 		dist(project);
+
+		builtProjects.add(project.get("name"));
+	}
+
+	/**
+	 * Executes Java code in the specified project's document, if any.
+	 * @return true if code was executed.
+	 */
+	static public boolean executeDocument (Project project) throws IOException {
+		String code = project.getDocument();
+		if (code == null || code.trim().isEmpty()) return false;
+		HashMap<String, Object> parameters = new HashMap();
+		parameters.put("project", project);
+		executeCode(project, code, parameters);
+		return true;
 	}
 
 	private Scar () {
@@ -1488,6 +1576,19 @@ public class Scar {
 
 	static public void main (String[] args) throws IOException {
 		Scar.args = new Arguments(args);
-		build(project(Scar.args.get("file", ".")));
+
+		if (Scar.args.has("trace"))
+			TRACE();
+		else if (Scar.args.has("debug"))
+			DEBUG();
+		else if (Scar.args.has("info"))
+			INFO();
+		else if (Scar.args.has("warn"))
+			WARN();
+		else if (Scar.args.has("error")) //
+			ERROR();
+
+		Project project = project(Scar.args.get("file", "."));
+		if (!executeDocument(project)) build(project);
 	}
 }
