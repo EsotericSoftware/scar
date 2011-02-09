@@ -25,6 +25,7 @@ import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map.Entry;
 import java.util.jar.Attributes;
@@ -137,10 +138,6 @@ public class Scar {
 
 		// Remove dependency if a JAR of the same name is on the classpath.
 		Paths classpath = project.getPaths("classpath");
-		for (String dependency : project.getList("dependencies")) {
-			Project dependencyProject = project(project.path(dependency));
-
-		}
 		classpath.add(dependencyClasspaths(project, classpath, false, false));
 		for (String dependency : project.getList("dependencies")) {
 			String dependencyName = project(project.path(dependency)).get("name");
@@ -457,7 +454,7 @@ public class Scar {
 			Project dependencyProject = project(project.path(dependency));
 			String dependencyTarget = dependencyProject.path("$target$/");
 			if (!fileExists(dependencyTarget)) throw new RuntimeException("Dependency has not been built: " + dependency);
-			paths.glob(dependencyTarget + "dist");
+			paths.glob(dependencyTarget + "dist", "!*/**.jar");
 			paths.add(dependencyDistPaths(dependencyProject, paths));
 		}
 		return paths;
@@ -1068,9 +1065,9 @@ public class Scar {
 	}
 
 	/**
-	 * Unzips all JARs in the "dist" directory and replaces them all with a single JAR. The manifest from the project's JAR is
-	 * used. Putting everything into a single JAR makes it harder to see what libraries are being used, but makes it easier for end
-	 * users to distribute the application.
+	 * Unzips all JARs in the "dist" directory and creates a single JAR containing those files in the "dist/onejar" directory. The
+	 * manifest from the project's JAR is used. Putting everything into a single JAR makes it harder to see what libraries are
+	 * being used, but makes it easier for end users to distribute the application.
 	 * <p>
 	 * Note: Files with the same path in different JARs will be overwritten. Files in the project's JAR will never be overwritten,
 	 * but may overwrite other files.
@@ -1100,10 +1097,13 @@ public class Scar {
 		}
 		unzip(distDir + projectJarName, onejarDir);
 
-		for (String jarFile : processedJARs)
-			delete(jarFile);
-
-		jar(distDir + projectJarName, new Paths(onejarDir));
+		String onejarFile;
+		if (project.has("version"))
+			onejarFile = project.path("$target$/dist/onejar/$name$-$version$-all.jar");
+		else
+			onejarFile = project.path("$target$/dist/onejar/$name$-all.jar");
+		mkdir(parent(onejarFile));
+		jar(onejarFile, new Paths(onejarDir));
 	}
 
 	/**
@@ -1149,10 +1149,10 @@ public class Scar {
 		}
 
 		Process process = new ProcessBuilder(command).start();
-		try {
-			process.waitFor();
-		} catch (InterruptedException ignored) {
-		}
+		// try {
+		// process.waitFor();
+		// } catch (InterruptedException ignored) {
+		// }
 		BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
 		while (true) {
 			String line = reader.readLine();
@@ -1326,6 +1326,13 @@ public class Scar {
 	 */
 	static public String fileName (String path) {
 		return new File(canonical(path)).getName();
+	}
+
+	/**
+	 * Returns the parent directory of the specified path.
+	 */
+	static public String parent (String path) {
+		return new File(canonical(path)).getParent();
 	}
 
 	/**
@@ -1532,7 +1539,7 @@ public class Scar {
 				jarFile = dependencyProject.path("$target$/$name$.jar");
 
 			if (DEBUG) debug("Building dependency: " + dependencyProject);
-			build(dependencyProject);
+			if (!executeDocument(dependencyProject)) build(dependencyProject);
 		}
 	}
 
