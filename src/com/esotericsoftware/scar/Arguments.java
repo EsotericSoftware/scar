@@ -54,9 +54,12 @@ public class Arguments {
 		return value;
 	}
 
+	public void set (String name) {
+		set(name, null);
+	}
+
 	public void set (String name, String value) {
 		if (name == null) throw new IllegalArgumentException("name cannot be null.");
-		if (value == null) throw new IllegalArgumentException("value cannot be null.");
 		parameters.put(name, value);
 	}
 
