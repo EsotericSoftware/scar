@@ -399,6 +399,7 @@ public class Scar {
 			fullPaths.remove(manifestIndex);
 			fullPaths.add(0, manifestFullPath);
 		}
+		mkdir(new File(jarFile).getParent());
 		JarOutputStream output = new JarOutputStream(new BufferedOutputStream(new FileOutputStream(jarFile)));
 		try {
 			for (int i = 0, n = fullPaths.size(); i < n; i++) {
