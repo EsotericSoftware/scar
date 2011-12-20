@@ -2,16 +2,38 @@
 package com.esotericsoftware.scar;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.StringReader;
+import java.net.MalformedURLException;
+import java.net.URI;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
+import java.util.jar.Attributes;
+import java.util.jar.Manifest;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import javax.tools.Diagnostic;
+import javax.tools.DiagnosticCollector;
+import javax.tools.FileObject;
+import javax.tools.ForwardingJavaFileManager;
+import javax.tools.JavaCompiler;
+import javax.tools.JavaFileObject;
+import javax.tools.JavaFileObject.Kind;
+import javax.tools.SimpleJavaFileObject;
+import javax.tools.ToolProvider;
 
 import com.esotericsoftware.wildcard.Paths;
 import com.esotericsoftware.yamlbeans.YamlException;
@@ -19,9 +41,10 @@ import com.esotericsoftware.yamlbeans.YamlReader;
 import com.esotericsoftware.yamlbeans.parser.Parser.ParserException;
 import com.esotericsoftware.yamlbeans.tokenizer.Tokenizer.TokenizerException;
 
-/**
- * Generic data structure that contains information needed to perform tasks.
- */
+import static com.esotericsoftware.minlog.Log.*;
+import static com.esotericsoftware.scar.Scar.*;
+
+/** Generic data structure that contains information needed to perform tasks. */
 public class Project {
 	static private Pattern formatPattern = Pattern.compile("([^\\$]*)\\$([^\\$]+)\\$([^\\$]*)");
 
@@ -29,15 +52,11 @@ public class Project {
 	private HashMap data = new HashMap();
 	private String document;
 
-	/**
-	 * Creates an empty project, without any default properties.
-	 */
+	/** Creates an empty project, without any default properties. */
 	public Project () {
 	}
 
-	/**
-	 * Creates an empty project, without any default properties, and then loads the specified YAML files.
-	 */
+	/** Creates an empty project, without any default properties, and then loads the specified YAML files. */
 	public Project (String path, String... paths) throws IOException {
 		if (paths == null) throw new IllegalArgumentException("paths cannot be null.");
 
@@ -46,11 +65,9 @@ public class Project {
 			replace(new Project(mergePath));
 	}
 
-	/**
-	 * Clears the data in this project and replaces it with the contents of the specified YAML file. The project directory is set
+	/** Clears the data in this project and replaces it with the contents of the specified YAML file. The project directory is set
 	 * to the directory containing the YAML file.
-	 * @param path Path to a YAML project file, or a directory containing a "project.yaml" file.
-	 */
+	 * @param path Path to a YAML project file, or a directory containing a "project.yaml" file. */
 	public void load (String path) throws IOException {
 		File file = new File(path);
 		if (!file.exists() && !path.endsWith(".yaml")) {
@@ -107,11 +124,9 @@ public class Project {
 		}
 	}
 
-	/**
-	 * Replaces the data in this project with the contents of the specified YAML file. If the specified project has data with the
+	/** Replaces the data in this project with the contents of the specified YAML file. If the specified project has data with the
 	 * same key as this project, the value is overwritten. Keys in this project that are not in the specified project are not
-	 * affected.
-	 */
+	 * affected. */
 	public void replace (Project project) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
 		data.putAll(project.data);
@@ -179,10 +194,8 @@ public class Project {
 		return (Boolean)value;
 	}
 
-	/**
-	 * Returns a list of strings under the specified key. If the key is a single value, it is placed in a list and returned. If the
-	 * key does not exist, an empty list is returned.
-	 */
+	/** Returns a list of strings under the specified key. If the key is a single value, it is placed in a list and returned. If the
+	 * key does not exist, an empty list is returned. */
 	public List<String> getList (Object key, String... defaultValues) {
 		Object object = getObject(key);
 		if (!(object instanceof List)) {
@@ -198,10 +211,8 @@ public class Project {
 		return list;
 	}
 
-	/**
-	 * Returns a list of objects under the specified key. If the key is a single value, it is placed in a list and returned. If the
-	 * key does not exist, an empty list is returned.
-	 */
+	/** Returns a list of objects under the specified key. If the key is a single value, it is placed in a list and returned. If the
+	 * key does not exist, an empty list is returned. */
 	public List getObjectList (Object key, Object... defaultValues) {
 		Object object = getObject(key);
 		if (!(object instanceof List)) {
@@ -245,9 +256,7 @@ public class Project {
 		return map;
 	}
 
-	/**
-	 * Uses the strings under the specified key to {@link Paths#glob(String, String...) glob} paths.
-	 */
+	/** Uses the strings under the specified key to {@link Paths#glob(String, String...) glob} paths. */
 	public Paths getPaths (String key) {
 		Paths paths = new Paths();
 		Object object = data.get(key);
@@ -260,9 +269,7 @@ public class Project {
 		return paths;
 	}
 
-	/**
-	 * Returns the specified path if it is an absolute path, otherwise returns the path relative to this project's directory.
-	 */
+	/** Returns the specified path if it is an absolute path, otherwise returns the path relative to this project's directory. */
 	public String path (String path) {
 		path = format(path);
 		if (dir == null) return path;
@@ -300,10 +307,8 @@ public class Project {
 		data.remove(key);
 	}
 
-	/**
-	 * Removes an item from a list or map. If the data under the specified key is a list, the entry equal to the specified value is
-	 * removed. If the data under the specified key is a map, the entry with the key specified by value is removed.
-	 */
+	/** Removes an item from a list or map. If the data under the specified key is a list, the entry equal to the specified value is
+	 * removed. If the data under the specified key is a map, the entry with the key specified by value is removed. */
 	public void remove (Object key, Object value) {
 		Object object = data.get(key);
 		if (object instanceof Map)
@@ -314,9 +319,7 @@ public class Project {
 			data.remove(key);
 	}
 
-	/**
-	 * Replaces property names surrounded by curly braces with the value from this project.
-	 */
+	/** Replaces property names surrounded by curly braces with the value from this project. */
 	public String format (String text) {
 		Matcher matcher = formatPattern.matcher(text);
 		StringBuilder buffer = new StringBuilder(128);
