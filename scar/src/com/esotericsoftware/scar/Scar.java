@@ -1,8 +1,7 @@
 
 package com.esotericsoftware.scar;
 
-import static com.esotericsoftware.minlog.Log.*;
-
+import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
@@ -17,6 +16,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.StringReader;
+import java.net.InetAddress;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
@@ -50,20 +50,20 @@ import javax.tools.JavaFileObject.Kind;
 import javax.tools.SimpleJavaFileObject;
 import javax.tools.ToolProvider;
 
+import org.apache.commons.net.ftp.FTPClient;
+
 import SevenZip.LzmaAlone;
 
 import com.esotericsoftware.wildcard.Paths;
 
+import static com.esotericsoftware.minlog.Log.*;
+
 // BOZO - Add javadocs method.
 
-/**
- * Provides utility methods for common Java build tasks.
- */
+/** Provides utility methods for common Java build tasks. */
 public class Scar {
-	/**
-	 * The Scar installation directory. The value comes from the SCAR_HOME environment variable, if it exists. Alternatively, the
-	 * "scar.home" System property can be defined.
-	 */
+	/** The Scar installation directory. The value comes from the SCAR_HOME environment variable, if it exists. Alternatively, the
+	 * "scar.home" System property can be defined. */
 	static public final String SCAR_HOME;
 	static {
 		if (System.getProperty("scar.home") != null)
@@ -72,135 +72,25 @@ public class Scar {
 			SCAR_HOME = System.getenv("SCAR_HOME");
 	}
 
-	/**
-	 * The command line arguments Scar was started with. Empty if Scar was started with no arguments or Scar was not started from
-	 * the command line.
-	 */
+	/** The command line arguments Scar was started with. Empty if Scar was started with no arguments or Scar was not started from
+	 * the command line. */
 	static public Arguments args = new Arguments();
 
-	/**
-	 * The Java installation directory.
-	 */
+	/** The Java installation directory. */
 	static public final String JAVA_HOME = System.getProperty("java.home");
 
-	/**
-	 * True if running on a Mac OS.
-	 */
+	/** True if running on a Mac OS. */
 	static public final boolean isMac = System.getProperty("os.name").toLowerCase().contains("mac os x");
 
-	/**
-	 * True if running on a Windows OS.
-	 */
+	/** True if running on a Windows OS. */
 	static public final boolean isWindows = System.getProperty("os.name").toLowerCase().contains("windows");
-
-	/**
-	 * List of project names that have been built. {@link #buildDependencies(Project)} will skip any projects with a matching name.
-	 */
-	static public final List<String> builtProjects = new ArrayList();
 
 	static {
 		Paths.setDefaultGlobExcludes("**/.svn/**");
 	}
 
-	/**
-	 * Loads the specified project with default values and loads any other projects needed for the "include" property.
-	 * @param path Path to a YAML project file, or a directory containing a "project.yaml" file.
-	 */
-	static public Project project (String path) throws IOException {
-		if (path == null) throw new IllegalArgumentException("path cannot be null.");
-
-		Project defaults = new Project();
-
-		File file = new File(canonical(path));
-		if (file.isDirectory()) {
-			String name = file.getName();
-			defaults.set("name", name);
-			defaults.set("target", file.getParent() + "/target/" + name + "/");
-		} else {
-			String name = file.getParentFile().getName();
-			defaults.set("name", name);
-			defaults.set("target", file.getParentFile().getParent() + "/target/" + name + "/");
-		}
-		defaults.set("classpath", "lib|**/*.jar");
-		defaults.set("dist", "dist");
-
-		ArrayList source = new ArrayList();
-		source.add("src|**/*.java");
-		source.add("src/main/java|**/*.java");
-		defaults.set("source", source);
-
-		ArrayList resources = new ArrayList();
-		resources.add("resources");
-		resources.add("src/main/resources");
-		defaults.set("resources", resources);
-
-		Project project = project(path, defaults);
-
-		// Remove dependency if a JAR of the same name is on the classpath.
-		Paths classpath = project.getPaths("classpath");
-		classpath.add(dependencyClasspaths(project, classpath, false, false));
-		for (String dependency : project.getList("dependencies")) {
-			String dependencyName = project(project.path(dependency)).get("name");
-			for (String classpathFile : classpath) {
-				String name = fileWithoutExtension(classpathFile);
-				int dashIndex = name.lastIndexOf('-');
-				if (dashIndex != -1) name = name.substring(0, dashIndex);
-				if (name.equals(dependencyName)) {
-					if (DEBUG)
-						debug("Ignoring " + project + " dependency: " + dependencyName + " (already on classpath: " + classpathFile
-							+ ")");
-					project.remove("dependencies", dependency);
-					break;
-				}
-			}
-		}
-
-		if (TRACE) trace("scar", "Project: " + project + "\n" + project);
-
-		return project;
-	}
-
-	/**
-	 * Loads the specified project with the specified defaults and loads any other projects needed for the "include" property.
-	 * @param path Path to a YAML project file, or a directory containing a "project.yaml" file.
-	 */
-	static public Project project (String path, Project defaults) throws IOException {
-		if (path == null) throw new IllegalArgumentException("path cannot be null.");
-		if (defaults == null) throw new IllegalArgumentException("defaults cannot be null.");
-
-		Project actualProject = new Project(path);
-
-		Project project = new Project();
-		project.replace(defaults);
-
-		File parent = new File(actualProject.getDirectory()).getParentFile();
-		while (parent != null) {
-			File includeFile = new File(parent, "include.yaml");
-			if (includeFile.exists()) {
-				try {
-					project.replace(project(includeFile.getAbsolutePath(), defaults));
-				} catch (RuntimeException ex) {
-					throw new RuntimeException("Error loading included project: " + includeFile.getAbsolutePath(), ex);
-				}
-			}
-			parent = parent.getParentFile();
-		}
-
-		for (String include : actualProject.getList("include")) {
-			try {
-				project.replace(project(actualProject.path(include), defaults));
-			} catch (RuntimeException ex) {
-				throw new RuntimeException("Error loading included project: " + actualProject.path(include), ex);
-			}
-		}
-		project.replace(actualProject);
-		return project;
-	}
-
-	/**
-	 * Returns the full path for the specified file name in the current working directory, the {@link #SCAR_HOME}, and the bin
-	 * directory of {@link #JAVA_HOME}.
-	 */
+	/** Returns the full path for the specified file name in the current working directory, the {@link #SCAR_HOME}, and the bin
+	 * directory of {@link #JAVA_HOME}. */
 	static public String resolvePath (String fileName) {
 		if (fileName == null) return null;
 
@@ -222,145 +112,28 @@ public class Scar {
 		return foundFile;
 	}
 
-	/**
-	 * Deletes the "target" directory and all files and directories under it.
-	 */
-	static public void clean (Project project) {
-		if (project == null) throw new IllegalArgumentException("project cannot be null.");
+	// BOZO - javadoc
+	static public String jar (String outputFile, String inputClassesDir, String mainClass, Paths classpath) throws IOException {
+		if (outputFile == null) throw new IllegalArgumentException("jarFile cannot be null.");
+		if (inputClassesDir == null) throw new IllegalArgumentException("inputDir cannot be null.");
 
-		if (INFO) info("scar", "Clean: " + project);
-		if (TRACE) trace("scar", "Deleting: " + project.path("$target$"));
-		new Paths(project.path("$target$")).delete();
-	}
-
-	/**
-	 * Computes the classpath for the specified project and all its dependency projects, recursively.
-	 */
-	static public Paths classpath (Project project, boolean errorIfDepenenciesNotBuilt) throws IOException {
-		if (project == null) throw new IllegalArgumentException("project cannot be null.");
-
-		Paths classpath = project.getPaths("classpath");
-		classpath.add(dependencyClasspaths(project, classpath, true, errorIfDepenenciesNotBuilt));
-		return classpath;
-	}
-
-	/**
-	 * Computes the classpath for all the dependencies of the specified project, recursively.
-	 */
-	static private Paths dependencyClasspaths (Project project, Paths paths, boolean includeDependencyJAR,
-		boolean errorIfDepenenciesNotBuilt) throws IOException {
-		for (String dependency : project.getList("dependencies")) {
-			Project dependencyProject = project(project.path(dependency));
-			String dependencyTarget = dependencyProject.path("$target$/");
-			if (errorIfDepenenciesNotBuilt && !fileExists(dependencyTarget))
-				throw new RuntimeException("Dependency has not been built: " + dependency + "\nAbsolute dependency path: "
-					+ canonical(dependency) + "\nMissing dependency target: " + canonical(dependencyTarget));
-			if (includeDependencyJAR) paths.glob(dependencyTarget, "*.jar");
-			paths.add(classpath(dependencyProject, errorIfDepenenciesNotBuilt));
-		}
-		return paths;
-	}
-
-	/**
-	 * Collects the source files using the "source" property and compiles them into a "classes" directory under the target
-	 * directory. It uses "classpath" and "dependencies" to find the libraries required to compile the source.
-	 * <p>
-	 * Note: Each dependency project is not built automatically. Each needs to be built before the dependent project.
-	 * @return The path to the "classes" directory.
-	 */
-	static public String compile (Project project) throws IOException {
-		if (project == null) throw new IllegalArgumentException("project cannot be null.");
-
-		Paths classpath = classpath(project, true);
-		Paths source = project.getPaths("source");
-
-		if (INFO) info("scar", "Compile: " + project);
-		if (DEBUG) {
-			debug("scar", "Source: " + source.count() + " files");
-			debug("scar", "Classpath: " + classpath);
-		}
-
-		String classesDir = mkdir(project.path("$target$/classes/"));
-
-		if (source.isEmpty()) {
-			if (WARN) warn("No source files found.");
-			return classesDir;
-		}
-
-		File tempFile = File.createTempFile("scar", "compile");
-
-		ArrayList<String> args = new ArrayList();
-		if (TRACE) args.add("-verbose");
-		args.add("-d");
-		args.add(classesDir);
-		args.add("-g:source,lines");
-		args.add("-target");
-		args.add("1.5");
-		args.addAll(source.getPaths());
-		if (!classpath.isEmpty()) {
-			args.add("-classpath");
-			args.add(classpath.toString(";"));
-		}
-
-		JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
-		if (compiler == null)
-			throw new RuntimeException("No compiler available. Ensure you are running from a 1.6+ JDK, and not a JRE.");
-		if (compiler.run(null, null, null, args.toArray(new String[args.size()])) != 0) {
-			throw new RuntimeException("Error during compilation of project: " + project + "\nSource: " + source.count()
-				+ " files\nClasspath: " + classpath);
-		}
-		try {
-			Thread.sleep(100);
-		} catch (InterruptedException ex) {
-		}
-		return classesDir;
-	}
-
-	/**
-	 * Collects the class files from the "classes" directory and all the resource files using the "resources" property and encodes
-	 * them into a JAR file.
-	 * 
-	 * If the resources don't contain a META-INF/MANIFEST.MF file, one is generated. If the project has a main property, the
-	 * generated manifest will include "Main-Class" and "Class-Path" entries to allow the main class to be run with "java -jar".
-	 * @return The path to the created JAR file.
-	 */
-	static public String jar (Project project) throws IOException {
-		if (project == null) throw new IllegalArgumentException("project cannot be null.");
-
-		if (INFO) info("scar", "JAR: " + project);
-
-		String jarDir = mkdir(project.path("$target$/jar/"));
-
-		String classesDir = project.path("$target$/classes/");
-		new Paths(classesDir, "**/*.class").copyTo(jarDir);
-		project.getPaths("resources").copyTo(jarDir);
-
-		String jarFile;
-		if (project.has("version"))
-			jarFile = project.path("$target$/$name$-$version$.jar");
-		else
-			jarFile = project.path("$target$/$name$.jar");
-
-		File manifestFile = new File(jarDir, "META-INF/MANIFEST.MF");
-		if (!manifestFile.exists()) {
+		File manifestFile = new File(inputClassesDir, "META-INF/MANIFEST.MF");
+		if (!manifestFile.exists() && mainClass != null) {
 			if (DEBUG) debug("scar", "Generating JAR manifest: " + manifestFile);
 			mkdir(manifestFile.getParent());
 			Manifest manifest = new Manifest();
 			Attributes attributes = manifest.getMainAttributes();
 			attributes.putValue(Attributes.Name.MANIFEST_VERSION.toString(), "1.0");
-			if (project.has("main")) {
-				if (DEBUG) debug("scar", "Main class: " + project.get("main"));
-				attributes.putValue(Attributes.Name.MAIN_CLASS.toString(), project.get("main"));
-				StringBuilder buffer = new StringBuilder(512);
-				buffer.append(fileName(jarFile));
-				buffer.append(" .");
-				Paths classpath = classpath(project, true);
-				for (String name : classpath.getRelativePaths()) {
-					buffer.append(' ');
-					buffer.append(name);
-				}
-				attributes.putValue(Attributes.Name.CLASS_PATH.toString(), buffer.toString());
+			if (DEBUG) debug("scar", "Main class: " + mainClass);
+			attributes.putValue(Attributes.Name.MAIN_CLASS.toString(), mainClass);
+			StringBuilder buffer = new StringBuilder(512);
+			buffer.append(fileName(outputFile));
+			buffer.append(" .");
+			for (String name : classpath.getRelativePaths()) {
+				buffer.append(' ');
+				buffer.append(name);
 			}
+			attributes.putValue(Attributes.Name.CLASS_PATH.toString(), buffer.toString());
 			FileOutputStream output = new FileOutputStream(manifestFile);
 			try {
 				manifest.write(output);
@@ -372,21 +145,9 @@ public class Scar {
 			}
 		}
 
-		jar(jarFile, new Paths(jarDir));
-		return jarFile;
-	}
+		Paths paths = paths(inputClassesDir).filesOnly();
 
-	/**
-	 * Encodes the specified paths into a JAR file.
-	 * @return The path to the JAR file.
-	 */
-	static public String jar (String jarFile, Paths paths) throws IOException {
-		if (jarFile == null) throw new IllegalArgumentException("jarFile cannot be null.");
-		if (paths == null) throw new IllegalArgumentException("paths cannot be null.");
-
-		paths = paths.filesOnly();
-
-		if (DEBUG) debug("scar", "Creating JAR (" + paths.count() + " entries): " + jarFile);
+		if (DEBUG) debug("scar", "Creating JAR (" + paths.count() + " entries): " + outputFile);
 
 		List<String> fullPaths = paths.getPaths();
 		List<String> relativePaths = paths.getRelativePaths();
@@ -399,8 +160,8 @@ public class Scar {
 			fullPaths.remove(manifestIndex);
 			fullPaths.add(0, manifestFullPath);
 		}
-		mkdir(new File(jarFile).getParent());
-		JarOutputStream output = new JarOutputStream(new BufferedOutputStream(new FileOutputStream(jarFile)));
+		mkdir(new File(outputFile).getParent());
+		JarOutputStream output = new JarOutputStream(new BufferedOutputStream(new FileOutputStream(outputFile)));
 		try {
 			for (int i = 0, n = fullPaths.size(); i < n; i++) {
 				output.putNextEntry(new JarEntry(relativePaths.get(i).replace('\\', '/')));
@@ -425,47 +186,34 @@ public class Scar {
 			} catch (Exception ignored) {
 			}
 		}
-		return jarFile;
+		return outputFile;
 	}
 
-	/**
-	 * Collects the distribution files using the "dist" property, the project's JAR file, and everything on the project's classpath
-	 * (including dependency project classpaths) and places them into a "dist" directory under the "target" directory. This is also
-	 * done for depenency projects, recursively. This is everything the application needs to be run from JAR files.
-	 * @return The path to the "dist" directory.
-	 */
-	static public String dist (Project project) throws IOException {
-		if (project == null) throw new IllegalArgumentException("project cannot be null.");
-
-		if (INFO) info("scar", "Dist: " + project);
-
-		String distDir = mkdir(project.path("$target$/dist/"));
-		classpath(project, true).copyTo(distDir);
-		Paths distPaths = project.getPaths("dist");
-		dependencyDistPaths(project, distPaths);
-		distPaths.copyTo(distDir);
-		new Paths(project.path("$target$"), "*.jar").copyTo(distDir);
-		return distDir;
+	static public void oneJAR (String inputDir, String outputFile, String mainClass, Paths classpath) throws IOException {
+		oneJAR(paths(inputDir, "*.jar"), outputFile, mainClass, classpath);
 	}
 
-	static private Paths dependencyDistPaths (Project project, Paths paths) throws IOException {
-		if (project == null) throw new IllegalArgumentException("project cannot be null.");
+	static public void oneJAR (Paths jars, String outputFile, String mainClass, Paths classpath) throws IOException {
+		if (jars == null) throw new IllegalArgumentException("jars cannot be null.");
 
-		for (String dependency : project.getList("dependencies")) {
-			Project dependencyProject = project(project.path(dependency));
-			String dependencyTarget = dependencyProject.path("$target$/");
-			if (!fileExists(dependencyTarget)) throw new RuntimeException("Dependency has not been built: " + dependency);
-			paths.glob(dependencyTarget + "dist", "!*/**.jar");
-			paths.add(dependencyDistPaths(dependencyProject, paths));
+		String tempDir = tempDirectory("oneJAR");
+
+		ArrayList<String> processedJARs = new ArrayList();
+		for (String jarFile : jars) {
+			unzip(jarFile, tempDir);
+			processedJARs.add(jarFile);
 		}
-		return paths;
+
+		if (mainClass != null) new File(tempDir, "META-INF/MANIFEST.MF").delete();
+
+		mkdir(parent(outputFile));
+		jar(outputFile, tempDir, mainClass, classpath);
+		delete(tempDir);
 	}
 
-	/**
-	 * Removes any code signatures on the specified JAR. Removes any signature files in the META-INF directory and removes any
+	/** Removes any code signatures on the specified JAR. Removes any signature files in the META-INF directory and removes any
 	 * signature entries from the JAR's manifest.
-	 * @return The path to the JAR file.
-	 */
+	 * @return The path to the JAR file. */
 	static public String unsign (String jarFile) throws IOException {
 		if (jarFile == null) throw new IllegalArgumentException("jarFile cannot be null.");
 
@@ -518,10 +266,8 @@ public class Scar {
 		return jarFile;
 	}
 
-	/**
-	 * Creates a new keystore for signing JARs. If the keystore file already exists, no action will be taken.
-	 * @return The path to the keystore file.
-	 */
+	/** Creates a new keystore for signing JARs. If the keystore file already exists, no action will be taken.
+	 * @return The path to the keystore file. */
 	static public String keystore (String keystoreFile, String alias, String password, String company, String title)
 		throws IOException {
 		if (keystoreFile == null) throw new IllegalArgumentException("keystoreFile cannot be null.");
@@ -562,10 +308,8 @@ public class Scar {
 		return keystoreFile;
 	}
 
-	/**
-	 * Signs the specified JAR.
-	 * @return The path to the JAR.
-	 */
+	/** Signs the specified JAR.
+	 * @return The path to the JAR. */
 	static public String sign (String jarFile, String keystoreFile, String alias, String password) throws IOException {
 		if (jarFile == null) throw new IllegalArgumentException("jarFile cannot be null.");
 		if (keystoreFile == null) throw new IllegalArgumentException("keystoreFile cannot be null.");
@@ -579,21 +323,17 @@ public class Scar {
 		return jarFile;
 	}
 
-	/**
-	 * Encodes the specified file with pack200. The resulting filename is the filename plus ".pack". The file is deleted after
+	/** Encodes the specified file with pack200. The resulting filename is the filename plus ".pack". The file is deleted after
 	 * encoding.
-	 * @return The path to the encoded file.
-	 */
+	 * @return The path to the encoded file. */
 	static public String pack200 (String jarFile) throws IOException {
 		String packedFile = pack200(jarFile, jarFile + ".pack");
 		delete(jarFile);
 		return packedFile;
 	}
 
-	/**
-	 * Encodes the specified file with pack200.
-	 * @return The path to the encoded file.
-	 */
+	/** Encodes the specified file with pack200.
+	 * @return The path to the encoded file. */
 	static public String pack200 (String jarFile, String packedFile) throws IOException {
 		if (jarFile == null) throw new IllegalArgumentException("jarFile cannot be null.");
 		if (packedFile == null) throw new IllegalArgumentException("packedFile cannot be null.");
@@ -605,11 +345,9 @@ public class Scar {
 		return packedFile;
 	}
 
-	/**
-	 * Decodes the specified file with pack200. The filename must end in ".pack" and the resulting filename has this stripped. The
+	/** Decodes the specified file with pack200. The filename must end in ".pack" and the resulting filename has this stripped. The
 	 * encoded file is deleted after decoding.
-	 * @return The path to the decoded file.
-	 */
+	 * @return The path to the decoded file. */
 	static public String unpack200 (String packedFile) throws IOException {
 		if (packedFile == null) throw new IllegalArgumentException("packedFile cannot be null.");
 		if (!packedFile.endsWith(".pack")) throw new IllegalArgumentException("packedFile must end with .pack: " + packedFile);
@@ -619,10 +357,8 @@ public class Scar {
 		return jarFile;
 	}
 
-	/**
-	 * Decodes the specified file with pack200.
-	 * @return The path to the decoded file.
-	 */
+	/** Decodes the specified file with pack200.
+	 * @return The path to the decoded file. */
 	static public String unpack200 (String packedFile, String jarFile) throws IOException {
 		if (packedFile == null) throw new IllegalArgumentException("packedFile cannot be null.");
 		if (jarFile == null) throw new IllegalArgumentException("jarFile cannot be null.");
@@ -633,20 +369,16 @@ public class Scar {
 		return jarFile;
 	}
 
-	/**
-	 * Encodes the specified file with GZIP. The resulting filename is the filename plus ".gz". The file is deleted after encoding.
-	 * @return The path to the encoded file.
-	 */
+	/** Encodes the specified file with GZIP. The resulting filename is the filename plus ".gz". The file is deleted after encoding.
+	 * @return The path to the encoded file. */
 	static public String gzip (String file) throws IOException {
 		String gzipFile = gzip(file, file + ".gz");
 		delete(file);
 		return gzipFile;
 	}
 
-	/**
-	 * Encodes the specified file with GZIP.
-	 * @return The path to the encoded file.
-	 */
+	/** Encodes the specified file with GZIP.
+	 * @return The path to the encoded file. */
 	static public String gzip (String file, String gzipFile) throws IOException {
 		if (file == null) throw new IllegalArgumentException("file cannot be null.");
 		if (gzipFile == null) throw new IllegalArgumentException("gzipFile cannot be null.");
@@ -665,11 +397,9 @@ public class Scar {
 		return gzipFile;
 	}
 
-	/**
-	 * Decodes the specified GZIP file. The filename must end in ".gz" and the resulting filename has this stripped. The encoded
+	/** Decodes the specified GZIP file. The filename must end in ".gz" and the resulting filename has this stripped. The encoded
 	 * file is deleted after decoding.
-	 * @return The path to the decoded file.
-	 */
+	 * @return The path to the decoded file. */
 	static public String ungzip (String gzipFile) throws IOException {
 		if (gzipFile == null) throw new IllegalArgumentException("gzipFile cannot be null.");
 		if (!gzipFile.endsWith(".gz")) throw new IllegalArgumentException("gzipFile must end with .gz: " + gzipFile);
@@ -679,10 +409,8 @@ public class Scar {
 		return file;
 	}
 
-	/**
-	 * Decodes the specified GZIP file.
-	 * @return The path to the decoded file.
-	 */
+	/** Decodes the specified GZIP file.
+	 * @return The path to the decoded file. */
 	static public String ungzip (String gzipFile, String file) throws IOException {
 		if (gzipFile == null) throw new IllegalArgumentException("gzipFile cannot be null.");
 		if (file == null) throw new IllegalArgumentException("file cannot be null.");
@@ -701,10 +429,8 @@ public class Scar {
 		return file;
 	}
 
-	/**
-	 * Encodes the specified files with ZIP.
-	 * @return The path to the encoded file.
-	 */
+	/** Encodes the specified files with ZIP.
+	 * @return The path to the encoded file. */
 	static public String zip (Paths paths, String zipFile) throws IOException {
 		if (paths == null) throw new IllegalArgumentException("paths cannot be null.");
 		if (zipFile == null) throw new IllegalArgumentException("zipFile cannot be null.");
@@ -715,10 +441,8 @@ public class Scar {
 		return zipFile;
 	}
 
-	/**
-	 * Decodes the specified ZIP file.
-	 * @return The path to the output directory.
-	 */
+	/** Decodes the specified ZIP file.
+	 * @return The path to the output directory. */
 	static public String unzip (String zipFile, String outputDir) throws IOException {
 		if (zipFile == null) throw new IllegalArgumentException("zipFile cannot be null.");
 		if (outputDir == null) throw new IllegalArgumentException("outputDir cannot be null.");
@@ -760,21 +484,17 @@ public class Scar {
 		return outputDir;
 	}
 
-	/**
-	 * Encodes the specified file with LZMA. The resulting filename is the filename plus ".lzma". The file is deleted after
+	/** Encodes the specified file with LZMA. The resulting filename is the filename plus ".lzma". The file is deleted after
 	 * encoding.
-	 * @return The path to the encoded file.
-	 */
+	 * @return The path to the encoded file. */
 	static public String lzma (String file) throws IOException {
 		String lzmaFile = lzma(file, file + ".lzma");
 		delete(file);
 		return lzmaFile;
 	}
 
-	/**
-	 * Encodes the specified file with LZMA.
-	 * @return The path to the encoded file.
-	 */
+	/** Encodes the specified file with LZMA.
+	 * @return The path to the encoded file. */
 	static public String lzma (String file, String lzmaFile) throws IOException {
 		if (file == null) throw new IllegalArgumentException("file cannot be null.");
 		if (lzmaFile == null) throw new IllegalArgumentException("lzmaFile cannot be null.");
@@ -789,11 +509,9 @@ public class Scar {
 		return lzmaFile;
 	}
 
-	/**
-	 * Decodes the specified LZMA file. The filename must end in ".lzma" and the resulting filename has this stripped. The encoded
+	/** Decodes the specified LZMA file. The filename must end in ".lzma" and the resulting filename has this stripped. The encoded
 	 * file is deleted after decoding.
-	 * @return The path to the decoded file.
-	 */
+	 * @return The path to the decoded file. */
 	static public String unlzma (String lzmaFile) throws IOException {
 		if (lzmaFile == null) throw new IllegalArgumentException("lzmaFile cannot be null.");
 		if (!lzmaFile.endsWith(".lzma")) throw new IllegalArgumentException("lzmaFile must end with .lzma: " + lzmaFile);
@@ -803,10 +521,8 @@ public class Scar {
 		return file;
 	}
 
-	/**
-	 * Decodes the specified LZMA file.
-	 * @return The path to the decoded file.
-	 */
+	/** Decodes the specified LZMA file.
+	 * @return The path to the decoded file. */
 	static public String unlzma (String lzmaFile, String file) throws IOException {
 		if (lzmaFile == null) throw new IllegalArgumentException("lzmaFile cannot be null.");
 		if (file == null) throw new IllegalArgumentException("file cannot be null.");
@@ -821,295 +537,18 @@ public class Scar {
 		return file;
 	}
 
-	/**
-	 * Copies all the JAR and JNLP files from the "dist" directory to a "jws" directory under the "target" directory. It then uses
-	 * the specified keystore to sign each JAR. If the "pack" parameter is true, it also compresses each JAR using pack200 and
-	 * GZIP.
-	 */
-	static public void jws (Project project, boolean pack, String keystoreFile, String alias, String password) throws IOException {
-		if (project == null) throw new IllegalArgumentException("project cannot be null.");
-		if (keystoreFile == null) throw new IllegalArgumentException("keystoreFile cannot be null.");
-		if (alias == null) throw new IllegalArgumentException("alias cannot be null.");
-		if (password == null) throw new IllegalArgumentException("password cannot be null.");
-		if (password.length() < 6) throw new IllegalArgumentException("password must be 6 or more characters.");
-
-		if (INFO) info("scar", "JWS: " + project);
-
-		String jwsDir = mkdir(project.path("$target$/jws/"));
-		String distDir = project.path("$target$/dist/");
-		new Paths(distDir, "*.jar", "*.jnlp").copyTo(jwsDir);
-		for (String file : new Paths(jwsDir, "*.jar"))
-			sign(unpack200(pack200(unsign(file))), keystoreFile, alias, password);
-		if (pack) {
-			String unpackedDir = mkdir(jwsDir + "unpacked/");
-			String packedDir = mkdir(jwsDir + "packed/");
-			for (String file : new Paths(jwsDir, "*.jar", "!*native*")) {
-				String fileName = fileName(file);
-				String unpackedFile = unpackedDir + fileName;
-				moveFile(file, unpackedFile);
-				String packedFile = packedDir + fileName;
-				gzip(pack200(copyFile(unpackedFile, packedFile)));
-			}
-		}
+	static public String tempFile (String prefix) throws IOException {
+		return File.createTempFile(prefix, null).getAbsolutePath();
 	}
 
-	/**
-	 * Generates ".htaccess" and "type map" VAR files in the "jws" directory. These files allow Apache to serve both pack200/GZIP
-	 * JARs and regular JARs, based on capability of the client requesting the JAR.
-	 */
-	static public void jwsHtaccess (Project project) throws IOException {
-		if (project == null) throw new IllegalArgumentException("project cannot be null.");
-
-		if (INFO) info("scar", "JWS htaccess: " + project);
-
-		String jwsDir = mkdir(project.path("$target$/jws/"));
-		for (String packedFile : new Paths(jwsDir + "packed", "*.jar.pack.gz")) {
-			String packedFileName = fileName(packedFile);
-			String jarFileName = substring(packedFileName, 0, -8);
-			FileWriter writer = new FileWriter(jwsDir + jarFileName + ".var");
-			try {
-				writer.write("URI: packed/" + packedFileName + "\n");
-				writer.write("Content-Type: x-java-archive\n");
-				writer.write("Content-Encoding: pack200-gzip\n");
-				writer.write("URI: unpacked/" + jarFileName + "\n");
-				writer.write("Content-Type: x-java-archive\n");
-			} finally {
-				try {
-					writer.close();
-				} catch (Exception ignored) {
-				}
-			}
-		}
-		FileWriter writer = new FileWriter(jwsDir + ".htaccess");
-		try {
-			writer.write("AddType application/x-java-jnlp-file .jnlp"); // JNLP mime type.
-			writer.write("AddType application/x-java-archive .jar\n"); // JAR mime type.
-			writer.write("AddHandler application/x-type-map .var\n"); // Enable type maps.
-			writer.write("Options +MultiViews\n");
-			writer.write("MultiViewsMatch Any\n"); // Apache 2.0 only.
-			writer.write("<Files *.pack.gz>\n");
-			writer.write("AddEncoding pack200-gzip .jar\n"); // Enable Content-Encoding header for .jar.pack.gz files.
-			writer.write("RemoveEncoding .gz\n"); // Prevent mod_gzip from messing with the Content-Encoding response.
-			writer.write("</Files>\n");
-		} finally {
-			try {
-				writer.close();
-			} catch (Exception ignored) {
-			}
-		}
+	static public String tempDirectory (String prefix) throws IOException {
+		File file = File.createTempFile(prefix, null);
+		if (!file.delete()) throw new IOException("Unable to delete temp file: " + file);
+		if (!file.mkdir()) throw new IOException("Unable to create temp directory: " + file);
+		return file.getAbsolutePath();
 	}
 
-	/**
-	 * Generates a JNLP file in the "jws" directory. JARs in the "jws" directory are included in the JNLP. JARs containing "native"
-	 * and "win", "mac", "linux", or "solaris" are properly included in the native section of the JNLP. The "main" property is used
-	 * for the main class in the JNLP.
-	 * @param splashImage Can be null.
-	 */
-	static public void jnlp (Project project, String url, String company, String title, String splashImage) throws IOException {
-		if (project == null) throw new IllegalArgumentException("project cannot be null.");
-		if (url == null) throw new IllegalArgumentException("url cannot be null.");
-		if (!url.startsWith("http")) throw new RuntimeException("Invalid url: " + url);
-		if (company == null) throw new IllegalArgumentException("company cannot be null.");
-		if (title == null) throw new IllegalArgumentException("title cannot be null.");
-
-		if (DEBUG)
-			debug("scar", "JNLP: " + project + " (" + url + ", " + company + ", " + title + ", " + splashImage + ")");
-		else if (INFO) //
-			info("scar", "JNLP: " + project);
-
-		if (!project.has("main")) throw new RuntimeException("Unable to generate JNLP: project has no main class");
-
-		int firstSlash = url.indexOf("/", 7);
-		int lastSlash = url.lastIndexOf("/");
-		if (firstSlash == -1 || lastSlash == -1) throw new RuntimeException("Invalid url: " + url);
-		String domain = url.substring(0, firstSlash + 1);
-		String path = url.substring(firstSlash + 1, lastSlash + 1);
-		String jnlpFile = url.substring(lastSlash + 1);
-
-		String jwsDir = mkdir(project.path("$target$/jws/"));
-		FileWriter writer = new FileWriter(jwsDir + jnlpFile);
-		try {
-			writer.write("<?xml version='1.0' encoding='utf-8'?>\n");
-			writer.write("<jnlp spec='1.0+' codebase='" + domain + "' href='" + path + jnlpFile + "'>\n");
-			writer.write("<information>\n");
-			writer.write("\t<title>" + title + "</title>\n");
-			writer.write("\t<vendor>" + company + "</vendor>\n");
-			writer.write("\t<homepage href='" + domain + "'/>\n");
-			writer.write("\t<description>" + title + "</description>\n");
-			writer.write("\t<description kind='short'>" + title + "</description>\n");
-			if (splashImage != null) writer.write("\t<icon kind='splash' href='" + path + splashImage + "'/>\n");
-			writer.write("</information>\n");
-			writer.write("<security>\n");
-			writer.write("\t<all-permissions/>\n");
-			writer.write("</security>\n");
-			writer.write("<resources>\n");
-			writer.write("\t<j2se href='http://java.sun.com/products/autodl/j2se' version='1.5+' max-heap-size='128m'/>\n");
-
-			// JAR with main class first.
-			String projectJarName;
-			if (project.has("version"))
-				projectJarName = project.format("$name$-$version$.jar");
-			else
-				projectJarName = project.format("$name$.jar");
-			writer.write("\t<jar href='" + path + projectJarName + "'/>\n");
-
-			// Rest of JARs, except natives.
-			for (String file : new Paths(jwsDir, "**/*.jar", "!*native*", "!**/" + projectJarName))
-				writer.write("\t<jar href='" + path + fileName(file) + "'/>\n");
-
-			writer.write("</resources>\n");
-			Paths nativePaths = new Paths(jwsDir, "*native*win*", "*win*native*");
-			if (nativePaths.count() == 1) {
-				writer.write("<resources os='Windows'>\n");
-				writer.write("\t<j2se href='http://java.sun.com/products/autodl/j2se' version='1.5+' max-heap-size='128m'/>\n");
-				writer.write("\t<nativelib href='" + path + nativePaths.getNames().get(0) + "'/>\n");
-				writer.write("</resources>\n");
-			}
-			nativePaths = new Paths(jwsDir, "*native*mac*", "*mac*native*");
-			if (nativePaths.count() == 1) {
-				writer.write("<resources os='Mac'>\n");
-				writer.write("\t<j2se href='http://java.sun.com/products/autodl/j2se' version='1.5+' max-heap-size='128m'/>\n");
-				writer.write("\t<nativelib href='" + path + nativePaths.getNames().get(0) + "'/>\n");
-				writer.write("</resources>\n");
-			}
-			nativePaths = new Paths(jwsDir, "*native*linux*", "*linux*native*");
-			if (nativePaths.count() == 1) {
-				writer.write("<resources os='Linux'>\n");
-				writer.write("\t<j2se href='http://java.sun.com/products/autodl/j2se' version='1.5+' max-heap-size='128m'/>\n");
-				writer.write("\t<nativelib href='" + path + nativePaths.getNames().get(0) + "'/>\n");
-				writer.write("</resources>\n");
-			}
-			nativePaths = new Paths(jwsDir, "*native*solaris*", "*solaris*native*");
-			if (nativePaths.count() == 1) {
-				writer.write("<resources os='SunOS'>\n");
-				writer.write("\t<j2se href='http://java.sun.com/products/autodl/j2se' version='1.5+' max-heap-size='128m'/>\n");
-				writer.write("\t<nativelib href='" + path + nativePaths.getNames().get(0) + "'/>\n");
-				writer.write("</resources>\n");
-			}
-			writer.write("<application-desc main-class='" + project.get("main") + "'/>\n");
-			writer.write("</jnlp>");
-		} finally {
-			try {
-				writer.close();
-			} catch (Exception ignored) {
-			}
-		}
-	}
-
-	static public String lwjglApplet (Project project, String keystoreFile, String alias, String password) throws IOException {
-		if (project == null) throw new IllegalArgumentException("project cannot be null.");
-		if (keystoreFile == null) throw new IllegalArgumentException("keystoreFile cannot be null.");
-		if (alias == null) throw new IllegalArgumentException("alias cannot be null.");
-		if (password == null) throw new IllegalArgumentException("password cannot be null.");
-		if (password.length() < 6) throw new IllegalArgumentException("password must be 6 or more characters.");
-
-		if (INFO) info("scar", "LWJGL applet: " + project);
-
-		String appletDir = mkdir(project.path("$target$/applet-lwjgl/"));
-		String distDir = project.path("$target$/dist/");
-		new Paths(distDir, "**/*.jar", "*.html", "*.htm").flatten().copyTo(appletDir);
-		for (String jarFile : new Paths(appletDir, "*.jar")) {
-			sign(unpack200(pack200(unsign(jarFile))), keystoreFile, alias, password);
-			String fileName = fileName(jarFile);
-			if (fileName.equals("lwjgl_util_applet.jar") || fileName.equals("lzma.jar")) continue;
-			if (fileName.contains("native"))
-				lzma(jarFile);
-			else
-				lzma(pack200(jarFile));
-		}
-
-		if (!new Paths(appletDir, "*.html", "*.htm").isEmpty()) return appletDir;
-		if (!project.has("main")) {
-			if (DEBUG) debug("Unable to generate applet.html: project has no main class");
-			return appletDir;
-		}
-		if (INFO) info("scar", "Generating: applet.html");
-		FileWriter writer = new FileWriter(appletDir + "applet.html");
-		try {
-			writer.write("<html>\n");
-			writer.write("<head><title>Applet</title></head>\n");
-			writer.write("<body>\n");
-			writer
-				.write("<applet code='org.lwjgl.util.applet.AppletLoader' archive='lwjgl_util_applet.jar, lzma.jar' codebase='.' width='640' height='480'>\n");
-			if (project.has("version")) writer.write("<param name='al_version' value='" + project.getInt("version") + "'>\n");
-			writer.write("<param name='al_title' value='" + project + "'>\n");
-			writer.write("<param name='al_main' value='" + project.get("main") + "'>\n");
-			writer.write("<param name='al_jars' value='");
-			int i = 0;
-			for (String name : new Paths(appletDir, "*.jar.pack.lzma").getNames()) {
-				if (i++ > 0) writer.write(", ");
-				writer.write(name);
-			}
-			writer.write("'>\n");
-			Paths nativePaths = new Paths(appletDir, "*native*win*.jar.lzma", "*win*native*.jar.lzma");
-			if (nativePaths.count() == 1) writer.write("<param name='al_windows' value='" + nativePaths.getNames().get(0) + "'>\n");
-			nativePaths = new Paths(appletDir, "*native*mac*.jar.lzma", "*mac*native*.jar.lzma");
-			if (nativePaths.count() == 1) writer.write("<param name='al_mac' value='" + nativePaths.getNames().get(0) + "'>\n");
-			nativePaths = new Paths(appletDir, "*native*linux*.jar.lzma", "*linux*native*.jar.lzma");
-			if (nativePaths.count() == 1) writer.write("<param name='al_linux' value='" + nativePaths.getNames().get(0) + "'>\n");
-			nativePaths = new Paths(appletDir, "*native*solaris*.jar.lzma", "*solaris*native*.jar.lzma");
-			if (nativePaths.count() == 1) writer.write("<param name='al_solaris' value='" + nativePaths.getNames().get(0) + "'>\n");
-			writer.write("<param name='al_logo' value='appletlogo.png'>\n");
-			writer.write("<param name='al_progressbar' value='appletprogress.gif'>\n");
-			writer.write("<param name='separate_jvm' value='true'>\n");
-			writer
-				.write("<param name='java_arguments' value='-Dsun.java2d.noddraw=true -Dsun.awt.noerasebackground=true -Dsun.java2d.d3d=false -Dsun.java2d.opengl=false -Dsun.java2d.pmoffscreen=false'>\n");
-			writer.write("</applet>\n");
-			writer.write("</body></html>\n");
-		} finally {
-			try {
-				writer.close();
-			} catch (Exception ignored) {
-			}
-		}
-		return appletDir;
-	}
-
-	/**
-	 * Unzips all JARs in the "dist" directory and creates a single JAR containing those files in the "dist/onejar" directory. The
-	 * manifest from the project's JAR is used. Putting everything into a single JAR makes it harder to see what libraries are
-	 * being used, but makes it easier for end users to distribute the application.
-	 * <p>
-	 * Note: Files with the same path in different JARs will be overwritten. Files in the project's JAR will never be overwritten,
-	 * but may overwrite other files.
-	 * @param excludeJARs The names of any JARs to exclude.
-	 */
-	static public void oneJAR (Project project, String... excludeJARs) throws IOException {
-		if (project == null) throw new IllegalArgumentException("project cannot be null.");
-
-		if (INFO) info("scar", "One JAR: " + project);
-
-		String onejarDir = mkdir(project.path("$target$/onejar/"));
-		String distDir = project.path("$target$/dist/");
-		String projectJarName;
-		if (project.has("version"))
-			projectJarName = project.format("$name$-$version$.jar");
-		else
-			projectJarName = project.format("$name$.jar");
-
-		ArrayList<String> processedJARs = new ArrayList();
-		outer:
-		for (String jarFile : new Paths(distDir, "*.jar", "!" + projectJarName)) {
-			String jarName = fileName(jarFile);
-			for (String exclude : excludeJARs)
-				if (jarName.equals(exclude)) continue outer;
-			unzip(jarFile, onejarDir);
-			processedJARs.add(jarFile);
-		}
-		unzip(distDir + projectJarName, onejarDir);
-
-		String onejarFile;
-		if (project.has("version"))
-			onejarFile = project.path("$target$/dist/onejar/$name$-$version$-all.jar");
-		else
-			onejarFile = project.path("$target$/dist/onejar/$name$-all.jar");
-		mkdir(parent(onejarFile));
-		jar(onejarFile, new Paths(onejarDir));
-	}
-
-	/**
-	 * Splits the specified command at spaces that are not surrounded by quotes and passes the result to {@link #shell(String...)}.
-	 */
+	/** Splits the specified command at spaces that are not surrounded by quotes and passes the result to {@link #shell(String...)}. */
 	static public void shell (String command) throws IOException {
 		List<String> matchList = new ArrayList<String>();
 		Pattern regex = Pattern.compile("[^\\s\"']+|\"([^\"]*)\"|'([^']*)'");
@@ -1125,10 +564,8 @@ public class Scar {
 		shell(matchList.toArray(new String[matchList.size()]));
 	}
 
-	/**
-	 * Executes the specified shell command. {@link #resolvePath(String)} is used to locate the file to execute. If not found, on
-	 * Windows the same filename with an "exe" extension is also tried.
-	 */
+	/** Executes the specified shell command. {@link #resolvePath(String)} is used to locate the file to execute. If not found, on
+	 * Windows the same filename with an "exe" extension is also tried. */
 	static public void shell (String... command) throws IOException {
 		if (command == null) throw new IllegalArgumentException("command cannot be null.");
 		if (command.length == 0) throw new IllegalArgumentException("command cannot be empty.");
@@ -1177,9 +614,7 @@ public class Scar {
 		}
 	}
 
-	/**
-	 * Reads to the end of the input stream and writes the bytes to the output stream.
-	 */
+	/** Reads to the end of the input stream and writes the bytes to the output stream. */
 	static public void copyStream (InputStream input, OutputStream output) throws IOException {
 		if (input == null) throw new IllegalArgumentException("input cannot be null.");
 		if (output == null) throw new IllegalArgumentException("output cannot be null.");
@@ -1203,9 +638,7 @@ public class Scar {
 		}
 	}
 
-	/**
-	 * Copies a file, overwriting any existing file at the destination.
-	 */
+	/** Copies a file, overwriting any existing file at the destination. */
 	static public String copyFile (String in, String out) throws IOException {
 		if (in == null) throw new IllegalArgumentException("in cannot be null.");
 		if (out == null) throw new IllegalArgumentException("out cannot be null.");
@@ -1231,9 +664,7 @@ public class Scar {
 		return out;
 	}
 
-	/**
-	 * Moves a file, overwriting any existing file at the destination.
-	 */
+	/** Moves a file, overwriting any existing file at the destination. */
 	static public String moveFile (String in, String out) throws IOException {
 		if (in == null) throw new IllegalArgumentException("in cannot be null.");
 		if (out == null) throw new IllegalArgumentException("out cannot be null.");
@@ -1243,9 +674,7 @@ public class Scar {
 		return out;
 	}
 
-	/**
-	 * Deletes a file or directory and all files and subdirecties under it.
-	 */
+	/** Deletes a file or directory and all files and subdirecties under it. */
 	static public boolean delete (String fileName) {
 		if (fileName == null) throw new IllegalArgumentException("fileName cannot be null.");
 
@@ -1265,9 +694,7 @@ public class Scar {
 		return file.delete();
 	}
 
-	/**
-	 * Creates the directories in the specified path.
-	 */
+	/** Creates the directories in the specified path. */
 	static public String mkdir (String path) {
 		if (path == null) throw new IllegalArgumentException("path cannot be null.");
 
@@ -1275,18 +702,14 @@ public class Scar {
 		return path;
 	}
 
-	/**
-	 * Returns true if the file exists.
-	 */
+	/** Returns true if the file exists. */
 	static public boolean fileExists (String path) {
 		if (path == null) throw new IllegalArgumentException("path cannot be null.");
 
 		return new File(path).exists();
 	}
 
-	/**
-	 * Returns the canonical path for the specified path. Eg, if "." is passed, this will resolve the actual path and return it.
-	 */
+	/** Returns the canonical path for the specified path. Eg, if "." is passed, this will resolve the actual path and return it. */
 	static public String canonical (String path) {
 		if (path == null) throw new IllegalArgumentException("path cannot be null.");
 
@@ -1300,9 +723,7 @@ public class Scar {
 		}
 	}
 
-	/**
-	 * Returns the textual contents of the specified file.
-	 */
+	/** Returns the textual contents of the specified file. */
 	static public String fileContents (String path) throws IOException {
 		StringBuilder stringBuffer = new StringBuilder(4096);
 		FileReader reader = new FileReader(path);
@@ -1322,23 +743,17 @@ public class Scar {
 		return stringBuffer.toString();
 	}
 
-	/**
-	 * Returns only the filename portion of the specified path.
-	 */
+	/** Returns only the filename portion of the specified path. */
 	static public String fileName (String path) {
 		return new File(canonical(path)).getName();
 	}
 
-	/**
-	 * Returns the parent directory of the specified path.
-	 */
+	/** Returns the parent directory of the specified path. */
 	static public String parent (String path) {
 		return new File(canonical(path)).getParent();
 	}
 
-	/**
-	 * Returns only the extension portion of the specified path, or an empty string if there is no extension.
-	 */
+	/** Returns only the extension portion of the specified path, or an empty string if there is no extension. */
 	static public String fileExtension (String file) {
 		if (file == null) throw new IllegalArgumentException("fileName cannot be null.");
 
@@ -1347,9 +762,7 @@ public class Scar {
 		return file.substring(commaIndex + 1);
 	}
 
-	/**
-	 * Returns only the filename portion of the specified path, without the extension, if any.
-	 */
+	/** Returns only the filename portion of the specified path, without the extension, if any. */
 	static public String fileWithoutExtension (String file) {
 		if (file == null) throw new IllegalArgumentException("fileName cannot be null.");
 
@@ -1363,10 +776,8 @@ public class Scar {
 		return file.substring(slashIndex, commaIndex);
 	}
 
-	/**
-	 * Returns a substring of the specified text.
-	 * @param end The end index of the substring. If negative, the index used will be "text.length() + end".
-	 */
+	/** Returns a substring of the specified text.
+	 * @param end The end index of the substring. If negative, the index used will be "text.length() + end". */
 	static public String substring (String text, int start, int end) {
 		if (text == null) throw new IllegalArgumentException("text cannot be null.");
 
@@ -1374,10 +785,252 @@ public class Scar {
 		return text.substring(start, text.length() + end);
 	}
 
-	/**
-	 * Compiles and executes the specified Java code. The code is compiled as if it were a Java method body.
+	static public void jws (String inputDir, String outputDir, boolean pack, String keystoreFile, String alias, String password)
+		throws IOException {
+		if (inputDir == null) throw new IllegalArgumentException("inputDir cannot be null.");
+		if (outputDir == null) throw new IllegalArgumentException("outputDir cannot be null.");
+		if (keystoreFile == null) throw new IllegalArgumentException("keystoreFile cannot be null.");
+		if (alias == null) throw new IllegalArgumentException("alias cannot be null.");
+		if (password == null) throw new IllegalArgumentException("password cannot be null.");
+		if (password.length() < 6) throw new IllegalArgumentException("password must be 6 or more characters.");
+
+		mkdir(outputDir);
+		paths(inputDir, "*.jar", "*.jnlp").copyTo(outputDir);
+		for (String file : paths(outputDir, "*.jar"))
+			sign(unpack200(pack200(unsign(file))), keystoreFile, alias, password);
+		if (!pack) return;
+		for (String file : paths(outputDir, "*.jar", "!*native*"))
+			gzip(pack200(file));
+	}
+
+	static public void jnlp (String inputDir, String mainClass, String mainClassJar, String url, String company, String title,
+		String splashImage) throws IOException {
+		if (mainClass == null) throw new IllegalArgumentException("mainClass cannot be null.");
+		if (url == null) throw new IllegalArgumentException("url cannot be null.");
+		if (title == null) throw new IllegalArgumentException("title cannot be null.");
+		if (company == null) throw new IllegalArgumentException("company cannot be null.");
+
+		int firstSlash = url.indexOf("/", 7);
+		int lastSlash = url.lastIndexOf("/");
+		if (firstSlash == -1 || lastSlash == -1) throw new RuntimeException("Invalid url: " + url);
+		String domain = url.substring(0, firstSlash + 1);
+		String path = url.substring(firstSlash + 1, lastSlash + 1);
+		String jnlpFile = url.substring(lastSlash + 1);
+
+		FileWriter writer = new FileWriter(inputDir + jnlpFile);
+		try {
+			writer.write("<?xml version='1.0' encoding='utf-8'?>\n");
+			writer.write("<jnlp spec='1.0+' codebase='" + domain + "' href='" + path + jnlpFile + "'>\n");
+			writer.write("<information>\n");
+			writer.write("\t<title>" + title + "</title>\n");
+			writer.write("\t<vendor>" + company + "</vendor>\n");
+			writer.write("\t<homepage href='" + domain + "'/>\n");
+			writer.write("\t<description>" + title + "</description>\n");
+			writer.write("\t<description kind='short'>" + title + "</description>\n");
+			if (splashImage != null) writer.write("\t<icon kind='splash' href='" + path + splashImage + "'/>\n");
+			writer.write("</information>\n");
+			writer.write("<security>\n");
+			writer.write("\t<all-permissions/>\n");
+			writer.write("</security>\n");
+			writer.write("<resources>\n");
+			writer.write("\t<j2se href='http://java.sun.com/products/autodl/j2se' version='1.5+' max-heap-size='128m'/>\n");
+
+			// JAR with main class first.
+			writer.write("\t<jar href='" + path + mainClassJar + "'/>\n");
+
+			// Rest of JARs, except natives.
+			for (String file : paths(inputDir, "**/*.jar", "**/*.jar.pack.lzma", "!*native*", "!**/" + mainClassJar))
+				writer.write("\t<jar href='" + path + fileName(file) + "'/>\n");
+
+			writer.write("</resources>\n");
+			Paths nativePaths = paths(inputDir, "*native*win*", "*win*native*");
+			if (nativePaths.count() == 1) {
+				writer.write("<resources os='Windows'>\n");
+				writer.write("\t<j2se href='http://java.sun.com/products/autodl/j2se' version='1.5+' max-heap-size='128m'/>\n");
+				writer.write("\t<nativelib href='" + path + nativePaths.getNames().get(0) + "'/>\n");
+				writer.write("</resources>\n");
+			}
+			nativePaths = paths(inputDir, "*native*mac*", "*mac*native*");
+			if (nativePaths.count() == 1) {
+				writer.write("<resources os='Mac'>\n");
+				writer.write("\t<j2se href='http://java.sun.com/products/autodl/j2se' version='1.5+' max-heap-size='128m'/>\n");
+				writer.write("\t<nativelib href='" + path + nativePaths.getNames().get(0) + "'/>\n");
+				writer.write("</resources>\n");
+			}
+			nativePaths = paths(inputDir, "*native*linux*", "*linux*native*");
+			if (nativePaths.count() == 1) {
+				writer.write("<resources os='Linux'>\n");
+				writer.write("\t<j2se href='http://java.sun.com/products/autodl/j2se' version='1.5+' max-heap-size='128m'/>\n");
+				writer.write("\t<nativelib href='" + path + nativePaths.getNames().get(0) + "'/>\n");
+				writer.write("</resources>\n");
+			}
+			nativePaths = paths(inputDir, "*native*solaris*", "*solaris*native*");
+			if (nativePaths.count() == 1) {
+				writer.write("<resources os='SunOS'>\n");
+				writer.write("\t<j2se href='http://java.sun.com/products/autodl/j2se' version='1.5+' max-heap-size='128m'/>\n");
+				writer.write("\t<nativelib href='" + path + nativePaths.getNames().get(0) + "'/>\n");
+				writer.write("</resources>\n");
+			}
+			writer.write("<application-desc main-class='" + mainClass + "'/>\n");
+			writer.write("</jnlp>");
+		} finally {
+			try {
+				writer.close();
+			} catch (Exception ignored) {
+			}
+		}
+	}
+
+	static public void lwjglApplet (String inputDir, String outputDir, String keystoreFile, String alias, String password)
+		throws IOException {
+		if (inputDir == null) throw new IllegalArgumentException("inputDir cannot be null.");
+		if (outputDir == null) throw new IllegalArgumentException("outputDir cannot be null.");
+		if (keystoreFile == null) throw new IllegalArgumentException("keystoreFile cannot be null.");
+		if (alias == null) throw new IllegalArgumentException("alias cannot be null.");
+		if (password == null) throw new IllegalArgumentException("password cannot be null.");
+		if (password.length() < 6) throw new IllegalArgumentException("password must be 6 or more characters.");
+
+		mkdir(outputDir);
+		paths(inputDir, "**/*.jar", "*.html", "*.htm").flatten().copyTo(outputDir);
+		for (String jarFile : paths(outputDir, "*.jar")) {
+			sign(unpack200(pack200(unsign(jarFile))), keystoreFile, alias, password);
+			String fileName = fileName(jarFile);
+			if (fileName.equals("lwjgl_util_applet.jar") || fileName.equals("lzma.jar")) continue;
+			if (fileName.contains("native"))
+				lzma(jarFile);
+			else
+				lzma(pack200(jarFile));
+		}
+	}
+
+	static public void lwjglAppletHtml (String inputDir, String mainClass) throws IOException {
+		if (INFO) info("scar", "Generating: applet.html");
+		FileWriter writer = new FileWriter(inputDir + "applet.html");
+		try {
+			writer.write("<html>\n");
+			writer.write("<head><title>Applet</title></head>\n");
+			writer.write("<body>\n");
+			writer
+				.write("<applet code='org.lwjgl.util.applet.AppletLoader' archive='lwjgl_util_applet.jar, lzma.jar' codebase='.' width='640' height='480'>\n");
+			writer.write("<param name='al_version' value='1.0'>\n");
+			writer.write("<param name='al_title' value='applet'>\n");
+			writer.write("<param name='al_main' value='" + mainClass + "'>\n");
+			writer.write("<param name='al_jars' value='");
+			int i = 0;
+			HashSet<String> names = new HashSet();
+			for (String name : paths(inputDir, "*.jar.pack.lzma").getNames()) {
+				names.add(name);
+				if (i++ > 0) writer.write(", ");
+				writer.write(name);
+			}
+			for (String name : paths(inputDir, "*.jar").getNames()) {
+				if (names.contains(name + ".pack.lzma")) continue;
+				if (i++ > 0) writer.write(", ");
+				writer.write(name + ".pack.lzma");
+			}
+			writer.write("'>\n");
+			Paths nativePaths = paths(inputDir, "*native*win*.jar.lzma", "*win*native*.jar.lzma");
+			if (nativePaths.count() == 1) writer.write("<param name='al_windows' value='" + nativePaths.getNames().get(0) + "'>\n");
+			nativePaths = paths(inputDir, "*native*mac*.jar.lzma", "*mac*native*.jar.lzma");
+			if (nativePaths.count() == 1) writer.write("<param name='al_mac' value='" + nativePaths.getNames().get(0) + "'>\n");
+			nativePaths = paths(inputDir, "*native*linux*.jar.lzma", "*linux*native*.jar.lzma");
+			if (nativePaths.count() == 1) writer.write("<param name='al_linux' value='" + nativePaths.getNames().get(0) + "'>\n");
+			nativePaths = paths(inputDir, "*native*solaris*.jar.lzma", "*solaris*native*.jar.lzma");
+			if (nativePaths.count() == 1) writer.write("<param name='al_solaris' value='" + nativePaths.getNames().get(0) + "'>\n");
+			writer.write("<param name='al_logo' value='appletlogo.png'>\n");
+			writer.write("<param name='al_progressbar' value='appletprogress.gif'>\n");
+			writer.write("<param name='separate_jvm' value='true'>\n");
+			writer
+				.write("<param name='java_arguments' value='-Dsun.java2d.noddraw=true -Dsun.awt.noerasebackground=true -Dsun.java2d.d3d=false -Dsun.java2d.opengl=false -Dsun.java2d.pmoffscreen=false'>\n");
+			writer.write("</applet>\n");
+			writer.write("</body></html>\n");
+		} finally {
+			try {
+				writer.close();
+			} catch (Exception ignored) {
+			}
+		}
+	}
+
+	static public Paths paths (String dir, String... patterns) {
+		return new Paths(dir, patterns);
+	}
+
+	static public void compile (Paths source, Paths classpath, String outputDir) {
+		if (source.isEmpty()) {
+			if (WARN) warn("No source files found.");
+			return;
+		}
+
+		ArrayList<String> args = new ArrayList();
+		if (TRACE) args.add("-verbose");
+		args.add("-d");
+		args.add(outputDir);
+		args.add("-g:source,lines");
+		args.add("-target");
+		args.add("1.5");
+		args.addAll(source.getPaths());
+		if (classpath != null && !classpath.isEmpty()) {
+			args.add("-classpath");
+			args.add(classpath.toString(";"));
+		}
+
+		JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+		if (compiler == null)
+			throw new RuntimeException("No compiler available. Ensure you are running from a 1.6+ JDK, and not a JRE.");
+		if (compiler.run(null, null, null, args.toArray(new String[args.size()])) != 0) {
+			throw new RuntimeException("Error during compilation.\nSource: " + source.count() + " files\nClasspath: " + classpath);
+		}
+		try {
+			Thread.sleep(100);
+		} catch (InterruptedException ex) {
+		}
+	}
+
+	static public void jwsHtaccess (String jwsDir) throws IOException {
+		for (String packedFile : paths(jwsDir + "packed", "*.jar.pack.gz")) {
+			String packedFileName = fileName(packedFile);
+			String jarFileName = substring(packedFileName, 0, -8);
+			FileWriter writer = new FileWriter(jwsDir + jarFileName + ".var");
+			try {
+				writer.write("URI: packed/" + packedFileName + "\n");
+				writer.write("Content-Type: x-java-archive\n");
+				writer.write("Content-Encoding: pack200-gzip\n");
+				writer.write("URI: unpacked/" + jarFileName + "\n");
+				writer.write("Content-Type: x-java-archive\n");
+			} finally {
+				try {
+					writer.close();
+				} catch (Exception ignored) {
+				}
+			}
+		}
+		FileWriter writer = new FileWriter(jwsDir + ".htaccess");
+		try {
+			writer.write("AddType application/x-java-jnlp-file .jnlp"); // JNLP mime type.
+			writer.write("AddType application/x-java-archive .jar\n"); // JAR mime type.
+			writer.write("AddHandler application/x-type-map .var\n"); // Enable type maps.
+			writer.write("Options +MultiViews\n");
+			writer.write("MultiViewsMatch Any\n"); // Apache 2.0 only.
+			writer.write("<Files *.pack.gz>\n");
+			writer.write("AddEncoding pack200-gzip .jar\n"); // Enable Content-Encoding header for .jar.pack.gz files.
+			writer.write("RemoveEncoding .gz\n"); // Prevent mod_gzip from messing with the Content-Encoding response.
+			writer.write("</Files>\n");
+		} finally {
+			try {
+				writer.close();
+			} catch (Exception ignored) {
+			}
+		}
+	}
+
+	static public void executeCode (String code, HashMap<String, Object> parameters) {
+		executeCode(code, parameters);
+	}
+
+	/** Compiles and executes the speFcified Java code. The code is compiled as if it were a Java method body.
 	 * <p>
-	 * Imports statements can be used at the start of the code. These imports are automatically used:<br>
+	 * Imports statements can be used before any code. These imports are automatically used:<br>
 	 * import com.esotericsoftware.scar.Scar;<br>
 	 * import com.esotericsoftware.wildcard.Paths;<br>
 	 * import com.esotericsoftware.minlog.Log;<br>
@@ -1389,9 +1042,9 @@ public class Scar {
 	 * classpath someTools.jar;<br>
 	 * classpath some/directory/of/class/files;<br>
 	 * classpath http://example.com/someTools.jar;<br>
-	 * @param parameters These parameters will be available in the scope where the code is executed.
-	 */
-	static public void executeCode (Project project, String code, HashMap<String, Object> parameters) {
+	 * If a project parameter is not null, non-absolute classpath entries will be relative to the project directory.
+	 * @param parameters These parameters will be available in the scope where the code is executed. */
+	static public void executeCode (String code, HashMap<String, Object> parameters, Project project) {
 		JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
 		if (compiler == null)
 			throw new RuntimeException("No compiler available. Ensure you are running from a 1.6+ JDK, and not a JRE.");
@@ -1403,6 +1056,7 @@ public class Scar {
 			classBuffer.append("import com.esotericsoftware.minlog.Log;\n");
 			classBuffer.append("import com.esotericsoftware.wildcard.Paths;\n");
 			classBuffer.append("import static com.esotericsoftware.scar.Scar.*;\n");
+			classBuffer.append("import static com.esotericsoftware.scar.Build.*;\n");
 			classBuffer.append("import static com.esotericsoftware.minlog.Log.*;\n");
 			classBuffer.append("public class Generated {\n");
 			int templateStartLines = 6;
@@ -1436,7 +1090,7 @@ public class Scar {
 					try {
 						classpathURLs.add(new URL(path));
 					} catch (MalformedURLException ex) {
-						classpathURLs.add(new File(project.path(path)).toURI().toURL());
+						if (project != null) classpathURLs.add(new File(project.path(path)).toURI().toURL());
 					}
 				} else {
 					if (trimmed.length() > 0) header = false;
@@ -1519,63 +1173,36 @@ public class Scar {
 		}
 	}
 
-	/**
-	 * Calls {@link #build(Project)} for each dependency project in the specified project.
-	 */
-	static public void buildDependencies (Project project) throws IOException {
-		if (project == null) throw new IllegalArgumentException("project cannot be null.");
-
-		for (String dependency : project.getList("dependencies")) {
-			Project dependencyProject = project(project.path(dependency));
-
-			if (builtProjects.contains(dependencyProject.get("name"))) {
-				if (DEBUG) debug("scar", "Dependency project already built: " + dependencyProject);
-				return;
-			}
-
-			String jarFile;
-			if (dependencyProject.has("version"))
-				jarFile = dependencyProject.path("$target$/$name$-$version$.jar");
-			else
-				jarFile = dependencyProject.path("$target$/$name$.jar");
-
-			if (DEBUG) debug("Building dependency: " + dependencyProject);
-			if (!executeDocument(dependencyProject)) build(dependencyProject);
+	static public boolean ftpUpload (String server, String user, String password, String dir, Paths paths, boolean passive)
+		throws IOException {
+		FTPClient ftp = new FTPClient();
+		InetAddress address = InetAddress.getByName(server);
+		if (DEBUG) debug("Connecting to FTP server: " + address);
+		ftp.connect(address);
+		if (passive) ftp.enterLocalPassiveMode();
+		if (!ftp.login(user, password)) {
+			if (ERROR) error("FTP login failed for user: " + user);
+			return false;
 		}
-	}
-
-	/**
-	 * Calls {@link #project(String)} and then {@link #build(Project)}.
-	 */
-	static public void build (String path) throws IOException {
-		build(project(path));
-	}
-
-	/**
-	 * Executes the buildDependencies, clean, compile, jar, and dist utility metshods.
-	 */
-	static public void build (Project project) throws IOException {
-		if (project == null) throw new IllegalArgumentException("project cannot be null.");
-
-		buildDependencies(project);
-		clean(project);
-		compile(project);
-		jar(project);
-		dist(project);
-
-		builtProjects.add(project.get("name"));
-	}
-
-	/**
-	 * Executes Java code in the specified project's document, if any.
-	 * @return true if code was executed.
-	 */
-	static public boolean executeDocument (Project project) throws IOException {
-		String code = project.getDocument();
-		if (code == null || code.trim().isEmpty()) return false;
-		HashMap<String, Object> parameters = new HashMap();
-		parameters.put("project", project);
-		executeCode(project, code, parameters);
+		if (!ftp.changeWorkingDirectory(dir)) {
+			if (ERROR) error("FTP directory change failed: " + dir);
+			return false;
+		}
+		ftp.setFileType(org.apache.commons.net.ftp.FTP.BINARY_FILE_TYPE);
+		for (String path : paths) {
+			if (INFO) info("FTP upload: " + path);
+			BufferedInputStream input = new BufferedInputStream(new FileInputStream(path));
+			try {
+				ftp.storeFile(new File(path).getName(), input);
+			} finally {
+				try {
+					input.close();
+				} catch (Exception ignored) {
+				}
+			}
+		}
+		ftp.logout();
+		ftp.disconnect();
 		return true;
 	}
 
@@ -1596,7 +1223,6 @@ public class Scar {
 		else if (Scar.args.has("error")) //
 			ERROR();
 
-		Project project = project(Scar.args.get("file", "."));
-		if (!executeDocument(project)) build(project);
+		// BOZO - Add something that can execute scar methods!
 	}
 }
