@@ -112,15 +112,26 @@ public class Scar {
 		return foundFile;
 	}
 
-	// BOZO - javadoc
-	static public String jar (String outputFile, String inputClassesDir, String mainClass, Paths classpath) throws IOException {
-		if (outputFile == null) throw new IllegalArgumentException("jarFile cannot be null.");
-		if (inputClassesDir == null) throw new IllegalArgumentException("inputDir cannot be null.");
+	static public void jar (String outputFile, String inputDir) throws IOException {
+		jar(outputFile, new Paths(inputDir), null, null);
+	}
 
-		File manifestFile = new File(inputClassesDir, "META-INF/MANIFEST.MF");
-		if (!manifestFile.exists() && mainClass != null) {
-			if (DEBUG) debug("scar", "Generating JAR manifest: " + manifestFile);
-			mkdir(manifestFile.getParent());
+	static public void jar (String outputFile, String inputDir, String mainClass, Paths classpath) throws IOException {
+		jar(outputFile, new Paths(inputDir), mainClass, classpath);
+	}
+
+	static public void jar (String outputFile, Paths inputPaths) throws IOException {
+		jar(outputFile, inputPaths, null, null);
+	}
+
+	// BOZO - javadoc
+	static public void jar (String outputFile, Paths inputPaths, String mainClass, Paths classpath) throws IOException {
+		if (outputFile == null) throw new IllegalArgumentException("jarFile cannot be null.");
+		if (inputPaths == null) throw new IllegalArgumentException("inputPaths cannot be null.");
+
+		if (mainClass != null) {
+			if (DEBUG) debug("scar", "Generating JAR manifest.");
+			String manifestFile = tempFile("manifest");
 			Manifest manifest = new Manifest();
 			Attributes attributes = manifest.getMainAttributes();
 			attributes.putValue(Attributes.Name.MANIFEST_VERSION.toString(), "1.0");
@@ -145,12 +156,12 @@ public class Scar {
 			}
 		}
 
-		Paths paths = paths(inputClassesDir).filesOnly();
+		inputPaths = inputPaths.filesOnly();
 
-		if (DEBUG) debug("scar", "Creating JAR (" + paths.count() + " entries): " + outputFile);
+		if (DEBUG) debug("scar", "Creating JAR (" + inputPaths.count() + " entries): " + outputFile);
 
-		List<String> fullPaths = paths.getPaths();
-		List<String> relativePaths = paths.getRelativePaths();
+		List<String> fullPaths = inputPaths.getPaths();
+		List<String> relativePaths = inputPaths.getRelativePaths();
 		// Ensure MANIFEST.MF is first.
 		int manifestIndex = relativePaths.indexOf("META-INF/MANIFEST.MF");
 		if (manifestIndex > 0) {
@@ -186,7 +197,6 @@ public class Scar {
 			} catch (Exception ignored) {
 			}
 		}
-		return outputFile;
 	}
 
 	static public void oneJAR (String inputDir, String outputFile, String mainClass, Paths classpath) throws IOException {
