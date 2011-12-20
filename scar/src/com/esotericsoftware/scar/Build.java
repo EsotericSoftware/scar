@@ -402,7 +402,7 @@ public class Build extends Project {
 		try {
 			Scar.executeCode(code, parameters, project);
 		} catch (RuntimeException ex) {
-			throw new RuntimeException("Error executing code for project: " + project);
+			throw new RuntimeException("Error executing code for project: " + project, ex);
 		}
 		return true;
 	}
