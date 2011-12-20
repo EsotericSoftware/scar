@@ -417,7 +417,7 @@ public class Build extends Project {
 		else if (Scar.args.has("error")) //
 			ERROR();
 
-		Project project = project("C:/Dev/oss/scar");
+		Project project = project(Scar.args.get("file", "."));
 		if (!executeDocument(project)) build(project);
 	}
 }
