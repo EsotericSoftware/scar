@@ -1056,7 +1056,6 @@ public class Scar {
 			classBuffer.append("import com.esotericsoftware.minlog.Log;\n");
 			classBuffer.append("import com.esotericsoftware.wildcard.Paths;\n");
 			classBuffer.append("import static com.esotericsoftware.scar.Scar.*;\n");
-			classBuffer.append("import static com.esotericsoftware.scar.Build.*;\n");
 			classBuffer.append("import static com.esotericsoftware.minlog.Log.*;\n");
 			classBuffer.append("public class Generated {\n");
 			int templateStartLines = 6;
