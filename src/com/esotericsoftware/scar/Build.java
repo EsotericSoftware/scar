@@ -399,7 +399,11 @@ public class Build extends Project {
 		if (code == null || code.trim().isEmpty()) return false;
 		HashMap<String, Object> parameters = new HashMap();
 		parameters.put("project", project);
-		Scar.executeCode(code, parameters, project);
+		try {
+			Scar.executeCode(code, parameters, project);
+		} catch (RuntimeException ex) {
+			throw new RuntimeException("Error executing code for project: " + project);
+		}
 		return true;
 	}
 
