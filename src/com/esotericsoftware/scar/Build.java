@@ -65,16 +65,15 @@ public class Build extends Project {
 				int dashIndex = name.lastIndexOf('-');
 				if (dashIndex != -1) name = name.substring(0, dashIndex);
 				if (name.equals(dependencyName)) {
-					if (DEBUG)
-						debug("Ignoring " + project + " dependency: " + dependencyName + " (already on classpath: " + classpathFile
+					if (DEBUG) {
+						debug(project.toString(), "Ignoring dependency: " + dependencyName + " (already on classpath: " + classpathFile
 							+ ")");
+					}
 					project.remove("dependencies", dependency);
 					break;
 				}
 			}
 		}
-
-		if (TRACE) trace("scar", "Project: " + project + "\n" + project);
 
 		return project;
 	}
@@ -118,8 +117,8 @@ public class Build extends Project {
 	static public void clean (Project project) {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
 
-		if (INFO) info("scar", "Clean: " + project);
-		if (TRACE) trace("scar", "Deleting: " + project.path("$target$"));
+		if (INFO) info(project.toString(), "Clean");
+		if (TRACE) trace(project.toString(), "Deleting: " + project.path("$target$"));
 		paths(project.path("$target$")).delete();
 	}
 
@@ -158,10 +157,10 @@ public class Build extends Project {
 		Paths classpath = classpath(project, true);
 		Paths source = project.getPaths("source");
 
-		if (INFO) info("scar", "Compile: " + project);
+		if (INFO) info(project.toString(), "Compile");
 		if (DEBUG) {
-			debug("scar", "Source: " + source.count() + " files");
-			debug("scar", "Classpath: " + classpath);
+			debug(project.toString(), "Source: " + source.count() + " files");
+			debug(project.toString(), "Classpath: " + classpath);
 		}
 
 		String classesDir = mkdir(project.path("$target$/classes/"));
@@ -179,7 +178,7 @@ public class Build extends Project {
 	static public String jar (Project project) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
 
-		if (INFO) info("scar", "JAR: " + project);
+		if (INFO) info(project.toString(), "JAR");
 
 		String jarDir = mkdir(project.path("$target$/jar/"));
 
@@ -204,7 +203,7 @@ public class Build extends Project {
 	static public String dist (Project project) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
 
-		if (INFO) info("scar", "Dist: " + project);
+		if (INFO) info(project.toString(), "Dist");
 
 		String distDir = mkdir(project.path("$target$/dist/"));
 		classpath(project, true).copyTo(distDir);
@@ -238,7 +237,7 @@ public class Build extends Project {
 		if (password == null) throw new IllegalArgumentException("password cannot be null.");
 		if (password.length() < 6) throw new IllegalArgumentException("password must be 6 or more characters.");
 
-		if (INFO) info("scar", "JWS: " + project);
+		if (INFO) info(project.toString(), "JWS");
 
 		String jwsDir = mkdir(project.path("$target$/jws/"));
 		String distDir = project.path("$target$/dist/");
@@ -250,7 +249,7 @@ public class Build extends Project {
 	static public void jwsHtaccess (Project project) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
 
-		if (INFO) info("scar", "JWS htaccess: " + project);
+		if (INFO) info(project.toString(), "JWS htaccess");
 
 		Scar.jwsHtaccess(mkdir(project.path("$target$/jws/")));
 	}
@@ -267,9 +266,9 @@ public class Build extends Project {
 		if (title == null) throw new IllegalArgumentException("title cannot be null.");
 
 		if (DEBUG)
-			debug("scar", "JNLP: " + project + " (" + url + ", " + company + ", " + title + ", " + splashImage + ")");
+			debug(project.toString(), "JNLP (" + url + ", " + company + ", " + title + ", " + splashImage + ")");
 		else if (INFO) //
-			info("scar", "JNLP: " + project);
+			info(project.toString(), "JNLP");
 
 		if (!project.has("main")) throw new RuntimeException("Unable to generate JNLP: project has no main class");
 
@@ -286,7 +285,7 @@ public class Build extends Project {
 	static public String lwjglApplet (Project project, String keystoreFile, String alias, String password) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
 
-		if (INFO) info("scar", "LWJGL applet: " + project);
+		if (INFO) info(project.toString(), "LWJGL applet");
 
 		String distDir = project.path("$target$/dist/");
 		String appletDir = mkdir(project.path("$target$/applet-lwjgl/"));
@@ -299,7 +298,7 @@ public class Build extends Project {
 	static public String lwjglAppletHtml (Project project) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
 
-		if (INFO) info("scar", "LWJGL applet HTML: " + project);
+		if (INFO) info(project.toString(), "LWJGL applet HTML");
 
 		String appletDir = mkdir(project.path("$target$/applet-lwjgl/"));
 
@@ -318,7 +317,7 @@ public class Build extends Project {
 	static public void oneJAR (Project project, String... excludeJARs) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
 
-		if (INFO) info("scar", "One JAR: " + project);
+		if (INFO) info(project.toString(), "One JAR");
 
 		String onejarDir = mkdir(project.path("$target$/onejar/"));
 		String distDir = project.path("$target$/dist/");
@@ -359,7 +358,7 @@ public class Build extends Project {
 			Project dependencyProject = project(project.path(dependency));
 
 			if (builtProjects.contains(dependencyProject.get("name"))) {
-				if (DEBUG) debug("scar", "Dependency project already built: " + dependencyProject);
+				if (DEBUG) debug(project.toString(), "Dependency project already built: " + dependencyProject);
 				continue;
 			}
 
@@ -384,10 +383,18 @@ public class Build extends Project {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
 
 		buildDependencies(project);
+
+		if (INFO) info(project.toString(), "Target: " + project.path("$target$"));
+
 		clean(project);
 		compile(project);
 		jar(project);
 		dist(project);
+
+		if (paths(project.path("$target$")).filesOnly().isEmpty()) {
+			if (WARN) warn(project.toString(), "Empty target folder.");
+			delete(project.path("$target$"));
+		}
 
 		builtProjects.add(project.get("name"));
 	}
