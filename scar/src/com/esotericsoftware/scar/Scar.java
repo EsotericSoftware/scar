@@ -129,6 +129,12 @@ public class Scar {
 		if (outputFile == null) throw new IllegalArgumentException("jarFile cannot be null.");
 		if (inputPaths == null) throw new IllegalArgumentException("inputPaths cannot be null.");
 
+		inputPaths = inputPaths.filesOnly();
+		if (inputPaths.isEmpty()) {
+			if (WARN) warn("scar", "No files to JAR.");
+			return;
+		}
+
 		if (mainClass != null) {
 			if (DEBUG) debug("scar", "Generating JAR manifest.");
 			String manifestFile = tempFile("manifest");
@@ -155,8 +161,6 @@ public class Scar {
 				}
 			}
 		}
-
-		inputPaths = inputPaths.filesOnly();
 
 		if (DEBUG) debug("scar", "Creating JAR (" + inputPaths.count() + " entries): " + outputFile);
 
@@ -968,7 +972,7 @@ public class Scar {
 
 	static public void compile (Paths source, Paths classpath, String outputDir) {
 		if (source.isEmpty()) {
-			if (WARN) warn("No source files found.");
+			if (WARN) warn("scar", "No source files found.");
 			return;
 		}
 
@@ -1186,20 +1190,20 @@ public class Scar {
 		throws IOException {
 		FTPClient ftp = new FTPClient();
 		InetAddress address = InetAddress.getByName(server);
-		if (DEBUG) debug("Connecting to FTP server: " + address);
+		if (DEBUG) debug("scar", "Connecting to FTP server: " + address);
 		ftp.connect(address);
 		if (passive) ftp.enterLocalPassiveMode();
 		if (!ftp.login(user, password)) {
-			if (ERROR) error("FTP login failed for user: " + user);
+			if (ERROR) error("scar", "FTP login failed for user: " + user);
 			return false;
 		}
 		if (!ftp.changeWorkingDirectory(dir)) {
-			if (ERROR) error("FTP directory change failed: " + dir);
+			if (ERROR) error("scar", "FTP directory change failed: " + dir);
 			return false;
 		}
 		ftp.setFileType(org.apache.commons.net.ftp.FTP.BINARY_FILE_TYPE);
 		for (String path : paths) {
-			if (INFO) info("FTP upload: " + path);
+			if (INFO) info("scar", "FTP upload: " + path);
 			BufferedInputStream input = new BufferedInputStream(new FileInputStream(path));
 			try {
 				ftp.storeFile(new File(path).getName(), input);
