@@ -1237,5 +1237,8 @@ public class Scar {
 			ERROR();
 
 		// BOZO - Add something that can execute scar methods!
+		
+		keystore("k", "moooooo", "moooooo", "moooooo", "moooooo");
+		jws("C:/Users/Nate/Desktop/portaljws", "C:/Users/Nate/Desktop/portaljws-200", true, "k", "moooooo", "moooooo");
 	}
 }
