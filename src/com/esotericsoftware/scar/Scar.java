@@ -135,9 +135,23 @@ public class Scar {
 			return;
 		}
 
-		if (mainClass != null) {
+		List<String> fullPaths = inputPaths.getPaths();
+		List<String> relativePaths = inputPaths.getRelativePaths();
+		int manifestIndex = relativePaths.indexOf("META-INF/MANIFEST.MF");
+
+		if (manifestIndex > 0) {
+			// Ensure MANIFEST.MF is first.
+			relativePaths.remove(manifestIndex);
+			relativePaths.add(0, "META-INF/MANIFEST.MF");
+			String manifestFullPath = fullPaths.get(manifestIndex);
+			fullPaths.remove(manifestIndex);
+			fullPaths.add(0, manifestFullPath);
+		} else if (mainClass != null) {
 			if (DEBUG) debug("scar", "Generating JAR manifest.");
 			String manifestFile = tempFile("manifest");
+			relativePaths.add(0, "META-INF/MANIFEST.MF");
+			fullPaths.add(0, manifestFile);
+
 			Manifest manifest = new Manifest();
 			Attributes attributes = manifest.getMainAttributes();
 			attributes.putValue(Attributes.Name.MANIFEST_VERSION.toString(), "1.0");
@@ -164,17 +178,6 @@ public class Scar {
 
 		if (DEBUG) debug("scar", "Creating JAR (" + inputPaths.count() + " entries): " + outputFile);
 
-		List<String> fullPaths = inputPaths.getPaths();
-		List<String> relativePaths = inputPaths.getRelativePaths();
-		// Ensure MANIFEST.MF is first.
-		int manifestIndex = relativePaths.indexOf("META-INF/MANIFEST.MF");
-		if (manifestIndex > 0) {
-			relativePaths.remove(manifestIndex);
-			relativePaths.add(0, "META-INF/MANIFEST.MF");
-			String manifestFullPath = fullPaths.get(manifestIndex);
-			fullPaths.remove(manifestIndex);
-			fullPaths.add(0, manifestFullPath);
-		}
 		mkdir(new File(outputFile).getParent());
 		JarOutputStream output = new JarOutputStream(new BufferedOutputStream(new FileOutputStream(outputFile)));
 		try {
@@ -1237,7 +1240,7 @@ public class Scar {
 			ERROR();
 
 		// BOZO - Add something that can execute scar methods!
-		
+
 		keystore("k", "moooooo", "moooooo", "moooooo", "moooooo");
 		jws("C:/Users/Nate/Desktop/portaljws", "C:/Users/Nate/Desktop/portaljws-200", true, "k", "moooooo", "moooooo");
 	}
