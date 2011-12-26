@@ -1,4 +1,4 @@
 main: com.esotericsoftware.scar.Build
 ---
-build(project);
-oneJAR(project);
+Build.build(project);
+Build.oneJAR(project);
