@@ -85,6 +85,8 @@ public class Scar {
 	/** True if running on a Windows OS. */
 	static public final boolean isWindows = System.getProperty("os.name").toLowerCase().contains("windows");
 
+	static private final String manifestFileName = "META-INF" + File.separator + "MANIFEST.MF";
+
 	static {
 		Paths.setDefaultGlobExcludes("**/.svn/**");
 	}
@@ -137,19 +139,18 @@ public class Scar {
 
 		List<String> fullPaths = inputPaths.getPaths();
 		List<String> relativePaths = inputPaths.getRelativePaths();
-		int manifestIndex = relativePaths.indexOf("META-INF/MANIFEST.MF");
-
+		int manifestIndex = relativePaths.indexOf(manifestFileName);
 		if (manifestIndex > 0) {
 			// Ensure MANIFEST.MF is first.
 			relativePaths.remove(manifestIndex);
-			relativePaths.add(0, "META-INF/MANIFEST.MF");
+			relativePaths.add(0, manifestFileName);
 			String manifestFullPath = fullPaths.get(manifestIndex);
 			fullPaths.remove(manifestIndex);
 			fullPaths.add(0, manifestFullPath);
 		} else if (mainClass != null) {
 			if (DEBUG) debug("scar", "Generating JAR manifest.");
 			String manifestFile = tempFile("manifest");
-			relativePaths.add(0, "META-INF/MANIFEST.MF");
+			relativePaths.add(0, manifestFileName);
 			fullPaths.add(0, manifestFile);
 
 			Manifest manifest = new Manifest();
@@ -221,7 +222,7 @@ public class Scar {
 			processedJARs.add(jarFile);
 		}
 
-		if (mainClass != null) new File(tempDir, "META-INF/MANIFEST.MF").delete();
+		if (mainClass != null) new File(tempDir, manifestFileName).delete();
 
 		mkdir(parent(outputFile));
 		jar(outputFile, tempDir, mainClass, classpath);
@@ -246,7 +247,7 @@ public class Scar {
 			if (manifest != null) {
 				// Remove manifest file entries.
 				manifest.getEntries().clear();
-				jarOutput.putNextEntry(new JarEntry("META-INF/MANIFEST.MF"));
+				jarOutput.putNextEntry(new JarEntry(manifestFileName));
 				manifest.write(jarOutput);
 			}
 			byte[] buffer = new byte[4096];
