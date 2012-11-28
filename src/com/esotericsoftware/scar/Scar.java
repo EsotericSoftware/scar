@@ -1,6 +1,12 @@
 
 package com.esotericsoftware.scar;
 
+import static com.esotericsoftware.minlog.Log.*;
+
+import SevenZip.LzmaAlone;
+
+import com.esotericsoftware.wildcard.Paths;
+
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
@@ -51,12 +57,6 @@ import javax.tools.SimpleJavaFileObject;
 import javax.tools.ToolProvider;
 
 import org.apache.commons.net.ftp.FTPClient;
-
-import SevenZip.LzmaAlone;
-
-import com.esotericsoftware.wildcard.Paths;
-
-import static com.esotericsoftware.minlog.Log.*;
 
 // BOZO - Add javadocs method.
 
@@ -791,6 +791,11 @@ public class Scar {
 		else
 			slashIndex++;
 		return file.substring(slashIndex, commaIndex);
+	}
+
+	/** Shortcut for System.out.println. */
+	static public void log (String text) {
+		System.out.println(text);
 	}
 
 	/** Returns a substring of the specified text.
