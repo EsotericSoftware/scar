@@ -604,23 +604,26 @@ public class Scar {
 			trace("scar", "Executing command: " + buffer);
 		}
 
-		Process process = new ProcessBuilder(command).start();
-		// try {
-		// process.waitFor();
-		// } catch (InterruptedException ignored) {
-		// }
-		BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-		while (true) {
-			String line = reader.readLine();
-			if (line == null) break;
-			System.out.println(line);
-		}
-		reader.close();
-		reader = new BufferedReader(new InputStreamReader(process.getErrorStream()));
-		while (true) {
-			String line = reader.readLine();
-			if (line == null) break;
-			System.out.println(line);
+		final Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
+		new Thread("shell") {
+			public void run () {
+				BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+				try {
+					while (true) {
+						String line = reader.readLine();
+						if (line == null) break;
+						System.out.println(line);
+					}
+					reader.close();
+				} catch (Exception ex) {
+					ex.printStackTrace();
+				}
+			}
+		}.start();
+
+		try {
+			process.waitFor();
+		} catch (InterruptedException ignored) {
 		}
 		if (process.exitValue() != 0) {
 			StringBuilder buffer = new StringBuilder(256);
@@ -990,8 +993,10 @@ public class Scar {
 		args.add("-d");
 		args.add(outputDir);
 		args.add("-g:source,lines");
+		args.add("-source");
+		args.add("1.6");
 		args.add("-target");
-		args.add("1.5");
+		args.add("1.6");
 		args.addAll(source.getPaths());
 		if (classpath != null && !classpath.isEmpty()) {
 			args.add("-classpath");
