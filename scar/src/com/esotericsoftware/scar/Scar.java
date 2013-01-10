@@ -58,6 +58,11 @@ import javax.tools.ToolProvider;
 
 import org.apache.commons.net.ftp.FTPClient;
 
+import com.jcraft.jsch.ChannelSftp;
+import com.jcraft.jsch.JSch;
+import com.jcraft.jsch.Session;
+import com.jcraft.jsch.SftpProgressMonitor;
+
 // BOZO - Add javadocs method.
 
 /** Provides utility methods for common Java build tasks. */
@@ -695,6 +700,39 @@ public class Scar {
 		return out;
 	}
 
+	static public String readFile (String file) throws IOException {
+		return readFile(file, null);
+	}
+
+	static public String readFile (String fileName, String charset) throws IOException {
+		if (fileName == null) throw new IllegalArgumentException("file cannot be null.");
+		File file = new File(fileName);
+		int fileLength = (int)file.length();
+		if (fileLength == 0) fileLength = 512;
+		StringBuilder output = new StringBuilder(fileLength);
+		InputStreamReader reader = null;
+		try {
+			if (charset == null)
+				reader = new InputStreamReader(new FileInputStream(file));
+			else
+				reader = new InputStreamReader(new FileInputStream(file), charset);
+			char[] buffer = new char[256];
+			while (true) {
+				int length = reader.read(buffer);
+				if (length == -1) break;
+				output.append(buffer, 0, length);
+			}
+		} catch (IOException ex) {
+			throw new RuntimeException("Error reading layout file: " + fileName, ex);
+		} finally {
+			try {
+				if (reader != null) reader.close();
+			} catch (IOException ignored) {
+			}
+		}
+		return output.toString();
+	}
+
 	/** Deletes a file or directory and all files and subdirecties under it. */
 	static public boolean delete (String fileName) {
 		if (fileName == null) throw new IllegalArgumentException("fileName cannot be null.");
@@ -978,6 +1016,14 @@ public class Scar {
 		}
 	}
 
+	static public Paths path (String file) {
+		return new Paths().addFile(file);
+	}
+
+	static public Paths path (String dir, String file) {
+		return new Paths().addFile(file);
+	}
+
 	static public Paths paths (String dir, String... patterns) {
 		return new Paths(dir, patterns);
 	}
@@ -1244,6 +1290,62 @@ public class Scar {
 		}
 		ftp.logout();
 		ftp.disconnect();
+		return true;
+	}
+
+	static public boolean sftpUpload (String server, String user, String password, String dir, Paths paths) throws IOException {
+		Session session = null;
+		ChannelSftp channel = null;
+		try {
+			session = new JSch().getSession(user, server, 22);
+			session.setConfig("StrictHostKeyChecking", "no");
+			session.setPassword(password);
+			session.connect();
+
+			channel = (ChannelSftp)session.openChannel("sftp");
+			channel.connect();
+			channel.cd(dir);
+			for (String path : paths) {
+				if (INFO) info("scar", "SFTP upload: " + path);
+				final File file = new File(path);
+				BufferedInputStream input = new BufferedInputStream(new FileInputStream(file));
+				try {
+					channel.put(input, new File(path).getName(), new SftpProgressMonitor() {
+						private long total, interval = file.length() / 76, lastCount;
+
+						public void init (int op, String source, String dest, long max) {
+							System.out.print("|-");
+						}
+
+						public void end () {
+							System.out.println("|");
+						}
+
+						public boolean count (long count) {
+							total += count;
+							while (total - lastCount >= interval) {
+								lastCount += interval;
+								System.out.print("-");
+							}
+							return true;
+						}
+					});
+				} finally {
+					try {
+						input.close();
+					} catch (Exception ignored) {
+					}
+				}
+			}
+		} catch (Exception ex) {
+			throw new IOException(ex);
+		} finally {
+			try {
+				if (session != null) session.disconnect();
+				if (channel != null) channel.exit();
+			} catch (Exception ignored) {
+			}
+		}
 		return true;
 	}
 
