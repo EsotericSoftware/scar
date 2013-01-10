@@ -1130,6 +1130,20 @@ public class Scar {
 			final String classCode = importBuffer.append(classBuffer).toString();
 			if (TRACE) trace("scar", "Executing code:\n" + classCode);
 
+			// Construct classpath option.
+			List<String> options = new ArrayList<String>();
+			{
+				StringBuffer buffer = new StringBuffer(System.getProperty("java.class.path"));
+				String pathSeparator = System.getProperty("path.separator");
+				for (URL url : classpathURLs) {
+					buffer.append(pathSeparator);
+					buffer.append(new File(url.toURI()).getCanonicalPath());
+				}
+				if (TRACE) trace("Using classpath: " + buffer);
+				options.add("-classpath");
+				options.add(buffer.toString());
+			}
+
 			// Compile class.
 			final ByteArrayOutputStream output = new ByteArrayOutputStream(32 * 1024);
 			final SimpleJavaFileObject javaObject = new SimpleJavaFileObject(URI.create("Generated.java"), Kind.SOURCE) {
@@ -1146,7 +1160,7 @@ public class Scar {
 				public JavaFileObject getJavaFileForOutput (Location location, String className, Kind kind, FileObject sibling) {
 					return javaObject;
 				}
-			}, diagnostics, null, null, Arrays.asList(new JavaFileObject[] {javaObject})).call();
+			}, diagnostics, options, null, Arrays.asList(new JavaFileObject[] {javaObject})).call();
 
 			if (!diagnostics.getDiagnostics().isEmpty()) {
 				StringBuilder buffer = new StringBuilder(1024);
