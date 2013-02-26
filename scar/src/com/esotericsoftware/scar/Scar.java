@@ -22,6 +22,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.StringReader;
+import java.io.Writer;
 import java.net.InetAddress;
 import java.net.MalformedURLException;
 import java.net.URI;
@@ -58,6 +59,8 @@ import javax.tools.ToolProvider;
 
 import org.apache.commons.net.ftp.FTPClient;
 
+import com.jcraft.jsch.Channel;
+import com.jcraft.jsch.ChannelExec;
 import com.jcraft.jsch.ChannelSftp;
 import com.jcraft.jsch.JSch;
 import com.jcraft.jsch.Session;
@@ -474,6 +477,7 @@ public class Scar {
 
 		ZipInputStream input = new ZipInputStream(new FileInputStream(zipFile));
 		try {
+			byte[] buffer = new byte[4096];
 			while (true) {
 				ZipEntry entry = input.getNextEntry();
 				if (entry == null) break;
@@ -485,7 +489,6 @@ public class Scar {
 				mkdir(file.getParent());
 				FileOutputStream output = new FileOutputStream(file);
 				try {
-					byte[] buffer = new byte[4096];
 					while (true) {
 						int length = input.read(buffer);
 						if (length == -1) break;
@@ -731,6 +734,30 @@ public class Scar {
 			}
 		}
 		return output.toString();
+	}
+
+	static public void writeFile (String fileName, String contents, boolean append) {
+		writeFile(fileName, contents, append, null);
+	}
+
+	static public void writeFile (String fileName, String contents, boolean append, String charset) {
+		Writer writer = null;
+		try {
+			File file = new File(fileName);
+			FileOutputStream output = new FileOutputStream(file, append);
+			if (charset == null)
+				writer = new OutputStreamWriter(output);
+			else
+				writer = new OutputStreamWriter(output, charset);
+			writer.write(contents);
+		} catch (Exception ex) {
+			throw new RuntimeException("Error writing file: " + fileName, ex);
+		} finally {
+			try {
+				if (writer != null) writer.close();
+			} catch (Exception ignored) {
+			}
+		}
 	}
 
 	/** Deletes a file or directory and all files and subdirecties under it. */
@@ -1293,7 +1320,7 @@ public class Scar {
 		return true;
 	}
 
-	static public boolean sftpUpload (String server, String user, String password, String dir, Paths paths) throws IOException {
+	static public void sftpUpload (String server, String user, String password, String dir, Paths paths) throws IOException {
 		Session session = null;
 		ChannelSftp channel = null;
 		try {
@@ -1346,7 +1373,48 @@ public class Scar {
 			} catch (Exception ignored) {
 			}
 		}
-		return true;
+	}
+
+	static public void ssh (String server, String user, String password, String command) throws IOException {
+		if (INFO) info("scar", "SSH: " + command);
+		Session session = null;
+		ChannelExec channel = null;
+		try {
+			session = new JSch().getSession(user, server, 22);
+			session.setConfig("StrictHostKeyChecking", "no");
+			session.setPassword(password);
+			session.connect();
+			channel = (ChannelExec)session.openChannel("exec");
+			channel.setCommand(command);
+			channel.setInputStream(null);
+			channel.setErrStream(System.err);
+			InputStream in = channel.getInputStream();
+			channel.connect();
+			byte[] buffer = new byte[1024];
+			while (true) {
+				while (in.available() > 0) {
+					int count = in.read(buffer, 0, 1024);
+					if (count < 0) break;
+					System.out.print(new String(buffer, 0, count));
+				}
+				if (channel.isClosed()) {
+					System.out.println("Exit: " + channel.getExitStatus());
+					break;
+				}
+				try {
+					Thread.sleep(100);
+				} catch (Exception ee) {
+				}
+			}
+		} catch (Exception ex) {
+			throw new IOException(ex);
+		} finally {
+			try {
+				if (session != null) session.disconnect();
+				if (channel != null) channel.disconnect();
+			} catch (Exception ignored) {
+			}
+		}
 	}
 
 	private Scar () {
