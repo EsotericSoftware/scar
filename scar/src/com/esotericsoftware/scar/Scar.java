@@ -42,6 +42,7 @@ import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.zip.Deflater;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 import java.util.zip.ZipEntry;
@@ -189,6 +190,7 @@ public class Scar {
 
 		mkdir(new File(outputFile).getParent());
 		JarOutputStream output = new JarOutputStream(new BufferedOutputStream(new FileOutputStream(outputFile)));
+		output.setLevel(Deflater.BEST_COMPRESSION);
 		try {
 			for (int i = 0, n = fullPaths.size(); i < n; i++) {
 				output.putNextEntry(new JarEntry(relativePaths.get(i).replace('\\', '/')));
