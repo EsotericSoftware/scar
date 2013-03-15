@@ -60,7 +60,6 @@ import javax.tools.ToolProvider;
 
 import org.apache.commons.net.ftp.FTPClient;
 
-import com.jcraft.jsch.Channel;
 import com.jcraft.jsch.ChannelExec;
 import com.jcraft.jsch.ChannelSftp;
 import com.jcraft.jsch.JSch;
@@ -1340,7 +1339,7 @@ public class Scar {
 				BufferedInputStream input = new BufferedInputStream(new FileInputStream(file));
 				try {
 					channel.put(input, new File(path).getName(), new SftpProgressMonitor() {
-						private long total, interval = file.length() / 76, lastCount;
+						private long total, interval = Math.max(1, file.length() / 76), lastCount;
 
 						public void init (int op, String source, String dest, long max) {
 							System.out.print("|-");
@@ -1417,6 +1416,14 @@ public class Scar {
 			} catch (Exception ignored) {
 			}
 		}
+	}
+
+	static public ArrayList list (Object... objects) {
+		if (objects == null) throw new IllegalArgumentException("objects cannot be null.");
+		ArrayList list = new ArrayList(objects.length);
+		for (Object o : objects)
+			list.add(o);
+		return list;
 	}
 
 	private Scar () {
