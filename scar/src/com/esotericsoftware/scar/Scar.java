@@ -192,7 +192,9 @@ public class Scar {
 		output.setLevel(Deflater.BEST_COMPRESSION);
 		try {
 			for (int i = 0, n = fullPaths.size(); i < n; i++) {
-				output.putNextEntry(new JarEntry(relativePaths.get(i).replace('\\', '/')));
+				JarEntry jarEntry = new JarEntry(relativePaths.get(i).replace('\\', '/'));
+				jarEntry.setTime(1370273339);
+				output.putNextEntry(jarEntry);
 				FileInputStream input = new FileInputStream(fullPaths.get(i));
 				try {
 					byte[] buffer = new byte[4096];
@@ -1074,7 +1076,7 @@ public class Scar {
 		args.addAll(source.getPaths());
 		if (classpath != null && !classpath.isEmpty()) {
 			args.add("-classpath");
-			args.add(classpath.toString(";"));
+			args.add(isWindows ? classpath.toString(";") : classpath.toString(":"));
 		}
 
 		JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();

@@ -388,7 +388,15 @@ public class Build extends Project {
 		if (INFO) info(project.toString(), "Target: " + project.path("$target$"));
 
 		clean(project);
+		try {
+			Thread.sleep(100);
+		} catch (InterruptedException ignored) {
+		}
 		compile(project);
+		try {
+			Thread.sleep(100);
+		} catch (InterruptedException ignored) {
+		}
 		jar(project);
 		dist(project);
 
