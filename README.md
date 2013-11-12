@@ -25,12 +25,16 @@ Create a new class and add a main method. Import the `Scar` and `Paths` classes,
 
 Use the `Build` class to do common build tasks on a project descriptor. The project descriptor is simply a map with convenience methods to get values (eg, as a list of file paths) and to do token replacement. The `Build` class looks in the project for specific values (source paths, dependency JARs, etc) and then compiles Java source and creates a JAR. For example, this builds a JAR from a project directory using the default project values:
 
+```java
     Project project = Build.project("path to project dir");
     Build.build(project);
+```
 
 Running Scar on a directory runs Build.main which does the above two lines of code.
 
+```java
     scar /path_to_project_dir/
+```
 
 If the directory contains a "project.yaml" file, it is used to customize the project values. When writing code to build a project instead of the command line, the project values can be customized in code.
 
@@ -40,24 +44,30 @@ The `Project` class is a project descriptor. It consists of a path to the root d
 
 Projects can be defined entirely in Java:
 
+```java
     Project project = new Project();
     project.set("name", "AwesomeLib");
     ArrayList sourceDirs = new ArrayList();
     sourceDirs.add("src");
     sourceDirs.add("other");
     project.set("source", sourceDirs);
+```
 
 Projects can also be loaded from a [YAML](http://www.yaml.org/) file on disk. YAML is a human readable format that makes it easy to specify the project object graph. Scar uses the [YamlBeans](http://code.google.com/p/yamlbeans/) library to parse YAML.
 
+```yaml
     name: AwesomeLib
     source:
     - src
     - other
-
+```
+```java   
     Project project = new Project("project.yaml");
+```
 
 Separate from the object graph, a project can also store a "document" string. What is done with this string is left up to the code that is actually performing the tasks. The document can be set in Java with the `Project#setDocument(String)` method or in YAML by using the document separator "---":
 
+```yaml
     name: AwesomeLib
     source:
     - src
@@ -65,6 +75,7 @@ Separate from the object graph, a project can also store a "document" string. Wh
     ---
     System.out.println("The document data can be any text, ");
     System.out.println("but is a convenient place to put code.");
+```
 
 ## Paths
 
@@ -100,7 +111,9 @@ When the Scar JAR is run from the command line, it creates a project for the cur
 
 The project descriptor describes the project's files, and this is often a sufficient to completely build a Java project. If no project.yaml file is found, the defaults are used. If the defaults match your project, you don't even need a project.yaml file. However, it is often convenient to have one at least to specify a main class:
 
+```yaml
     main: com.example.MainClass
+```
 
 ### Build customization
 
@@ -108,6 +121,7 @@ When the Scar JAR is run, if a project has a document string (text included afte
 
 Here is an example project descriptor that does the default build and then signs the JARs for use with Java WebStart:
 
+```java
     source: tools|**.java
     resources:
     - images
@@ -117,6 +131,7 @@ Here is an example project descriptor that does the default build and then signs
     Build.build(project);
     keystore("keystore", "alias", "password", "Company", "Title");
     Build.jws(project, false, "keystore", "alias", "password");
+```
 
 ## Scar utility methods
 
@@ -147,8 +162,10 @@ Scar.jwsHtaccess(project) generates ".htaccess" and "type map" VAR files in the 
 
 Scar uses the [MinLog](http://code.google.com/p/minlog/) library for logging. Little is logged at the `INFO` level, which is the default. The `DEBUG` and `TRACE` levels can be enabled for increasingly more information:
 
+```java
     Log.DEBUG();
     Log.TRACE();
+```
 
 Besides logging, since Scar is simply Java code, a build can be run through a debugger to quickly figure out problems.
 
@@ -156,13 +173,16 @@ Besides logging, since Scar is simply Java code, a build can be run through a de
 
 Wildcard properties can be specified as a single item:
 
+```yaml
     source: src|**/*.java
     resources: resources
     classpath: lib|**/*.jar
     dist: dist
+```
 
 Or as a list:
 
+```yaml
     source:
     - src|**/*.java
     - tools|**/*.java
@@ -171,9 +191,11 @@ Or as a list:
     - resources/images|*.png|*.jpg
     classpath: lib|**/*.jar
     dist: dist
+```
 
 A more complex example that uses all the properties:
 
+```yaml
     include: ../common.yaml
     version: 1.2-alpha3
     source:
@@ -203,3 +225,4 @@ A more complex example that uses all the properties:
     Build.jws(project, true, "keystore", "alias", "password");
     Build.jwsHtaccess(project);
     Build.jnlp(project, "http://example.com/run.jnlp", "Company", "Title", "splash.png");
+```
