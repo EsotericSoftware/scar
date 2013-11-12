@@ -1,5 +1,7 @@
 ![](https://raw.github.com/wiki/EsotericSoftware/scar/images/logo.png)
 
+Please use the [Scar discussion group](http://groups.google.com/group/scar-users) for support.
+
 ## Overview
 
 Scar is a collection of utilities that make it easier to do build related tasks using Java code. Building with Java code makes sense for Java developers. Rather than a complicated tool that caters to all needs, Scar is a simple tool that allows you to get what you need done in a simple, straightforward manner. Familiar tools and libraries can be used. Builds can be debugged like any other Java program. There is no new language to learn or XML attributes to look up.
