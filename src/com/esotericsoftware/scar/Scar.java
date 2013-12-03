@@ -1324,10 +1324,15 @@ public class Scar {
 	}
 
 	static public void sftpUpload (String server, String user, String password, String dir, Paths paths) throws IOException {
+		sftpUpload(server, 22, user, password, dir, paths);
+	}
+
+	static public void sftpUpload (String server, int port, String user, String password, String dir, Paths paths)
+		throws IOException {
 		Session session = null;
 		ChannelSftp channel = null;
 		try {
-			session = new JSch().getSession(user, server, 22);
+			session = new JSch().getSession(user, server, port);
 			session.setConfig("StrictHostKeyChecking", "no");
 			session.setPassword(password);
 			session.connect();
@@ -1379,11 +1384,15 @@ public class Scar {
 	}
 
 	static public void ssh (String server, String user, String password, String command) throws IOException {
+		ssh(server, 22, user, password, command);
+	}
+
+	static public void ssh (String server, int port, String user, String password, String command) throws IOException {
 		if (INFO) info("scar", "SSH: " + command);
 		Session session = null;
 		ChannelExec channel = null;
 		try {
-			session = new JSch().getSession(user, server, 22);
+			session = new JSch().getSession(user, server, port);
 			session.setConfig("StrictHostKeyChecking", "no");
 			session.setPassword(password);
 			session.connect();
