@@ -2,6 +2,7 @@
 package com.esotericsoftware.scar;
 
 import static com.esotericsoftware.minlog.Log.*;
+import static com.esotericsoftware.scar.Jar.*;
 
 import SevenZip.LzmaAlone;
 
@@ -23,6 +24,7 @@ import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.StringReader;
 import java.io.Writer;
+import java.lang.ProcessBuilder.Redirect;
 import java.net.InetAddress;
 import java.net.MalformedURLException;
 import java.net.URI;
@@ -93,8 +95,6 @@ public class Scar {
 	/** True if running on a Windows OS. */
 	static public final boolean isWindows = System.getProperty("os.name").toLowerCase().contains("windows");
 
-	static private final String manifestFileName = "META-INF" + File.separator + "MANIFEST.MF";
-
 	static {
 		Paths.setDefaultGlobExcludes("**/.svn/**");
 	}
@@ -122,282 +122,6 @@ public class Scar {
 		return foundFile;
 	}
 
-	static public void jar (String outputFile, String inputDir) throws IOException {
-		jar(outputFile, new Paths(inputDir), null, null);
-	}
-
-	static public void jar (String outputFile, String inputDir, String mainClass, Paths classpath) throws IOException {
-		jar(outputFile, new Paths(inputDir), mainClass, classpath);
-	}
-
-	static public void jar (String outputFile, Paths inputPaths) throws IOException {
-		jar(outputFile, inputPaths, null, null);
-	}
-
-	// BOZO - javadoc
-	static public void jar (String outputFile, Paths inputPaths, String mainClass, Paths classpath) throws IOException {
-		if (outputFile == null) throw new IllegalArgumentException("jarFile cannot be null.");
-		if (inputPaths == null) throw new IllegalArgumentException("inputPaths cannot be null.");
-
-		inputPaths = inputPaths.filesOnly();
-		if (inputPaths.isEmpty()) {
-			if (WARN) warn("scar", "No files to JAR.");
-			return;
-		}
-
-		List<String> fullPaths = inputPaths.getPaths();
-		List<String> relativePaths = inputPaths.getRelativePaths();
-		int manifestIndex = relativePaths.indexOf(manifestFileName);
-		if (manifestIndex > 0) {
-			// Ensure MANIFEST.MF is first.
-			relativePaths.remove(manifestIndex);
-			relativePaths.add(0, manifestFileName);
-			String manifestFullPath = fullPaths.get(manifestIndex);
-			fullPaths.remove(manifestIndex);
-			fullPaths.add(0, manifestFullPath);
-		} else if (mainClass != null) {
-			if (DEBUG) debug("scar", "Generating JAR manifest.");
-			String manifestFile = tempFile("manifest");
-			relativePaths.add(0, manifestFileName);
-			fullPaths.add(0, manifestFile);
-
-			Manifest manifest = new Manifest();
-			Attributes attributes = manifest.getMainAttributes();
-			attributes.putValue(Attributes.Name.MANIFEST_VERSION.toString(), "1.0");
-			if (DEBUG) debug("scar", "Main class: " + mainClass);
-			attributes.putValue(Attributes.Name.MAIN_CLASS.toString(), mainClass);
-			StringBuilder buffer = new StringBuilder(512);
-			buffer.append(fileName(outputFile));
-			buffer.append(" .");
-			for (String name : classpath.getRelativePaths()) {
-				buffer.append(' ');
-				buffer.append(name);
-			}
-			attributes.putValue(Attributes.Name.CLASS_PATH.toString(), buffer.toString());
-			FileOutputStream output = new FileOutputStream(manifestFile);
-			try {
-				manifest.write(output);
-			} finally {
-				try {
-					output.close();
-				} catch (Exception ignored) {
-				}
-			}
-		}
-
-		if (DEBUG) debug("scar", "Creating JAR (" + inputPaths.count() + " entries): " + outputFile);
-
-		mkdir(new File(outputFile).getParent());
-		JarOutputStream output = new JarOutputStream(new BufferedOutputStream(new FileOutputStream(outputFile)));
-		output.setLevel(Deflater.BEST_COMPRESSION);
-		try {
-			for (int i = 0, n = fullPaths.size(); i < n; i++) {
-				JarEntry jarEntry = new JarEntry(relativePaths.get(i).replace('\\', '/'));
-				jarEntry.setTime(1370273339);
-				output.putNextEntry(jarEntry);
-				FileInputStream input = new FileInputStream(fullPaths.get(i));
-				try {
-					byte[] buffer = new byte[4096];
-					while (true) {
-						int length = input.read(buffer);
-						if (length == -1) break;
-						output.write(buffer, 0, length);
-					}
-				} finally {
-					try {
-						input.close();
-					} catch (Exception ignored) {
-					}
-				}
-			}
-		} finally {
-			try {
-				output.close();
-			} catch (Exception ignored) {
-			}
-		}
-	}
-
-	static public void oneJAR (String inputDir, String outputFile, String mainClass, Paths classpath) throws IOException {
-		oneJAR(paths(inputDir, "*.jar"), outputFile, mainClass, classpath);
-	}
-
-	static public void oneJAR (Paths jars, String outputFile, String mainClass, Paths classpath) throws IOException {
-		if (jars == null) throw new IllegalArgumentException("jars cannot be null.");
-
-		String tempDir = tempDirectory("oneJAR");
-
-		ArrayList<String> processedJARs = new ArrayList();
-		for (String jarFile : jars) {
-			unzip(jarFile, tempDir);
-			processedJARs.add(jarFile);
-		}
-
-		if (mainClass != null) new File(tempDir, manifestFileName).delete();
-
-		mkdir(parent(outputFile));
-		jar(outputFile, tempDir, mainClass, classpath);
-		delete(tempDir);
-	}
-
-	/** Removes any code signatures on the specified JAR. Removes any signature files in the META-INF directory and removes any
-	 * signature entries from the JAR's manifest.
-	 * @return The path to the JAR file. */
-	static public String unsign (String jarFile) throws IOException {
-		if (jarFile == null) throw new IllegalArgumentException("jarFile cannot be null.");
-
-		if (DEBUG) debug("scar", "Removing signature from JAR: " + jarFile);
-
-		File tempFile = File.createTempFile("scar", "removejarsig");
-		JarOutputStream jarOutput = null;
-		JarInputStream jarInput = null;
-		try {
-			jarOutput = new JarOutputStream(new FileOutputStream(tempFile));
-			jarInput = new JarInputStream(new FileInputStream(jarFile));
-			Manifest manifest = jarInput.getManifest();
-			if (manifest != null) {
-				// Remove manifest file entries.
-				manifest.getEntries().clear();
-				jarOutput.putNextEntry(new JarEntry(manifestFileName));
-				manifest.write(jarOutput);
-			}
-			byte[] buffer = new byte[4096];
-			while (true) {
-				JarEntry entry = jarInput.getNextJarEntry();
-				if (entry == null) break;
-				String name = entry.getName();
-				// Skip signature files.
-				if (name.startsWith("META-INF/") && (name.endsWith(".SF") || name.endsWith(".DSA") || name.endsWith(".RSA")))
-					continue;
-				jarOutput.putNextEntry(new JarEntry(name));
-				while (true) {
-					int length = jarInput.read(buffer);
-					if (length == -1) break;
-					jarOutput.write(buffer, 0, length);
-				}
-			}
-			jarInput.close();
-			jarOutput.close();
-			copyFile(tempFile.getAbsolutePath(), jarFile);
-		} catch (IOException ex) {
-			throw new IOException("Error unsigning JAR file: " + jarFile, ex);
-		} finally {
-			try {
-				if (jarInput != null) jarInput.close();
-			} catch (Exception ignored) {
-			}
-			try {
-				if (jarOutput != null) jarOutput.close();
-			} catch (Exception ignored) {
-			}
-			tempFile.delete();
-		}
-		return jarFile;
-	}
-
-	/** Creates a new keystore for signing JARs. If the keystore file already exists, no action will be taken.
-	 * @return The path to the keystore file. */
-	static public String keystore (String keystoreFile, String alias, String password, String company, String title)
-		throws IOException {
-		if (keystoreFile == null) throw new IllegalArgumentException("keystoreFile cannot be null.");
-		if (fileExists(keystoreFile)) return keystoreFile;
-		if (alias == null) throw new IllegalArgumentException("alias cannot be null.");
-		if (password == null) throw new IllegalArgumentException("password cannot be null.");
-		if (password.length() < 6) throw new IllegalArgumentException("password must be 6 or more characters.");
-		if (company == null) throw new IllegalArgumentException("company cannot be null.");
-		if (title == null) throw new IllegalArgumentException("title cannot be null.");
-
-		if (DEBUG)
-			debug("scar", "Creating keystore (" + alias + ":" + password + ", " + company + ", " + title + "): " + keystoreFile);
-
-		File file = new File(keystoreFile);
-		file.delete();
-		Process process = Runtime.getRuntime().exec(
-			new String[] {resolvePath("keytool"), "-genkey", "-keystore", keystoreFile, "-alias", alias});
-		OutputStreamWriter writer = new OutputStreamWriter(process.getOutputStream());
-		writer.write(password + "\n"); // Enter keystore password:
-		writer.write(password + "\n"); // Re-enter new password:
-		writer.write(company + "\n"); // What is your first and last name?
-		writer.write(title + "\n"); // What is the name of your organizational unit?
-		writer.write(title + "\n"); // What is the name of your organization?
-		writer.write("\n"); // What is the name of your City or Locality? [Unknown]
-		writer.write("\n"); // What is the name of your State or Province? [Unknown]
-		writer.write("\n"); // What is the two-letter country code for this unit? [Unknown]
-		writer.write("yes\n"); // Correct?
-		writer.write("\n"); // Return if same alias key password as keystore.
-		writer.flush();
-		process.getOutputStream().close();
-		process.getInputStream().close();
-		process.getErrorStream().close();
-		try {
-			process.waitFor();
-		} catch (InterruptedException ignored) {
-		}
-		if (!file.exists()) throw new RuntimeException("Error creating keystore.");
-		return keystoreFile;
-	}
-
-	/** Signs the specified JAR.
-	 * @return The path to the JAR. */
-	static public String sign (String jarFile, String keystoreFile, String alias, String password) throws IOException {
-		if (jarFile == null) throw new IllegalArgumentException("jarFile cannot be null.");
-		if (keystoreFile == null) throw new IllegalArgumentException("keystoreFile cannot be null.");
-		if (alias == null) throw new IllegalArgumentException("alias cannot be null.");
-		if (password == null) throw new IllegalArgumentException("password cannot be null.");
-		if (password.length() < 6) throw new IllegalArgumentException("password must be 6 or more characters.");
-
-		if (DEBUG) debug("scar", "Signing JAR (" + keystoreFile + ", " + alias + ":" + password + "): " + jarFile);
-
-		shell("jarsigner", "-keystore", keystoreFile, "-storepass", password, "-keypass", password, jarFile, alias);
-		return jarFile;
-	}
-
-	/** Encodes the specified file with pack200. The resulting filename is the filename plus ".pack". The file is deleted after
-	 * encoding.
-	 * @return The path to the encoded file. */
-	static public String pack200 (String jarFile) throws IOException {
-		String packedFile = pack200(jarFile, jarFile + ".pack");
-		delete(jarFile);
-		return packedFile;
-	}
-
-	/** Encodes the specified file with pack200.
-	 * @return The path to the encoded file. */
-	static public String pack200 (String jarFile, String packedFile) throws IOException {
-		if (jarFile == null) throw new IllegalArgumentException("jarFile cannot be null.");
-		if (packedFile == null) throw new IllegalArgumentException("packedFile cannot be null.");
-
-		if (DEBUG) debug("scar", "Packing JAR: " + jarFile + " -> " + packedFile);
-
-		shell("pack200", "--no-gzip", "--segment-limit=-1", "--no-keep-file-order", "--effort=7", "--modification-time=latest",
-			packedFile, jarFile);
-		return packedFile;
-	}
-
-	/** Decodes the specified file with pack200. The filename must end in ".pack" and the resulting filename has this stripped. The
-	 * encoded file is deleted after decoding.
-	 * @return The path to the decoded file. */
-	static public String unpack200 (String packedFile) throws IOException {
-		if (packedFile == null) throw new IllegalArgumentException("packedFile cannot be null.");
-		if (!packedFile.endsWith(".pack")) throw new IllegalArgumentException("packedFile must end with .pack: " + packedFile);
-
-		String jarFile = unpack200(packedFile, substring(packedFile, 0, -5));
-		delete(packedFile);
-		return jarFile;
-	}
-
-	/** Decodes the specified file with pack200.
-	 * @return The path to the decoded file. */
-	static public String unpack200 (String packedFile, String jarFile) throws IOException {
-		if (packedFile == null) throw new IllegalArgumentException("packedFile cannot be null.");
-		if (jarFile == null) throw new IllegalArgumentException("jarFile cannot be null.");
-
-		if (DEBUG) debug("scar", "Unpacking JAR: " + packedFile + " -> " + jarFile);
-
-		shell("unpack200", packedFile, jarFile);
-		return jarFile;
-	}
-
 	/** Encodes the specified file with GZIP. The resulting filename is the filename plus ".gz". The file is deleted after encoding.
 	 * @return The path to the encoded file. */
 	static public String gzip (String file) throws IOException {
@@ -414,12 +138,12 @@ public class Scar {
 
 		if (DEBUG) debug("scar", "GZIP encoding: " + file + " -> " + gzipFile);
 
-		InputStream input = new FileInputStream(file);
+		GZIPOutputStream output = new GZIPOutputStream(new FileOutputStream(gzipFile));
 		try {
-			copyStream(input, new GZIPOutputStream(new FileOutputStream(gzipFile)));
+			copyStream(new FileInputStream(file), output);
 		} finally {
 			try {
-				input.close();
+				output.close();
 			} catch (Exception ignored) {
 			}
 		}
@@ -446,12 +170,12 @@ public class Scar {
 
 		if (DEBUG) debug("scar", "GZIP decoding: " + gzipFile + " -> " + file);
 
-		InputStream input = new GZIPInputStream(new FileInputStream(gzipFile));
+		FileOutputStream output = new FileOutputStream(file);
 		try {
-			copyStream(input, new FileOutputStream(file));
+			copyStream(new GZIPInputStream(new FileInputStream(gzipFile)), output);
 		} finally {
 			try {
-				input.close();
+				output.close();
 			} catch (Exception ignored) {
 			}
 		}
@@ -614,7 +338,6 @@ public class Scar {
 			}
 			trace("scar", "Executing command: " + buffer);
 		}
-
 		final Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
 		new Thread("shell") {
 			public void run () {
@@ -623,7 +346,7 @@ public class Scar {
 					while (true) {
 						String line = reader.readLine();
 						if (line == null) break;
-						System.out.println(line);
+						if (INFO) info("scar", line);
 					}
 					reader.close();
 				} catch (Exception ex) {
@@ -646,7 +369,8 @@ public class Scar {
 		}
 	}
 
-	/** Reads to the end of the input stream and writes the bytes to the output stream. */
+	/** Reads to the end of the input stream and writes the bytes to the output stream. The input stream is closed, the output is
+	 * not. */
 	static public void copyStream (InputStream input, OutputStream output) throws IOException {
 		if (input == null) throw new IllegalArgumentException("input cannot be null.");
 		if (output == null) throw new IllegalArgumentException("output cannot be null.");
@@ -659,10 +383,6 @@ public class Scar {
 				output.write(buffer, 0, length);
 			}
 		} finally {
-			try {
-				output.close();
-			} catch (Exception ignored) {
-			}
 			try {
 				input.close();
 			} catch (Exception ignored) {
@@ -897,6 +617,43 @@ public class Scar {
 			gzip(pack200(file));
 	}
 
+	static public void jwsHtaccess (String jwsDir) throws IOException {
+		for (String packedFile : paths(jwsDir + "packed", "*.jar.pack.gz")) {
+			String packedFileName = fileName(packedFile);
+			String jarFileName = substring(packedFileName, 0, -8);
+			FileWriter writer = new FileWriter(jwsDir + jarFileName + ".var");
+			try {
+				writer.write("URI: packed/" + packedFileName + "\n");
+				writer.write("Content-Type: x-java-archive\n");
+				writer.write("Content-Encoding: pack200-gzip\n");
+				writer.write("URI: unpacked/" + jarFileName + "\n");
+				writer.write("Content-Type: x-java-archive\n");
+			} finally {
+				try {
+					writer.close();
+				} catch (Exception ignored) {
+				}
+			}
+		}
+		FileWriter writer = new FileWriter(jwsDir + ".htaccess");
+		try {
+			writer.write("AddType application/x-java-jnlp-file .jnlp"); // JNLP mime type.
+			writer.write("AddType application/x-java-archive .jar\n"); // JAR mime type.
+			writer.write("AddHandler application/x-type-map .var\n"); // Enable type maps.
+			writer.write("Options +MultiViews\n");
+			writer.write("MultiViewsMatch Any\n"); // Apache 2.0 only.
+			writer.write("<Files *.pack.gz>\n");
+			writer.write("AddEncoding pack200-gzip .jar\n"); // Enable Content-Encoding header for .jar.pack.gz files.
+			writer.write("RemoveEncoding .gz\n"); // Prevent mod_gzip from messing with the Content-Encoding response.
+			writer.write("</Files>\n");
+		} finally {
+			try {
+				writer.close();
+			} catch (Exception ignored) {
+			}
+		}
+	}
+
 	static public void jnlp (String inputDir, String mainClass, String mainClassJar, String url, String company, String title,
 		String splashImage) throws IOException {
 		if (mainClass == null) throw new IllegalArgumentException("mainClass cannot be null.");
@@ -1091,43 +848,6 @@ public class Scar {
 		}
 	}
 
-	static public void jwsHtaccess (String jwsDir) throws IOException {
-		for (String packedFile : paths(jwsDir + "packed", "*.jar.pack.gz")) {
-			String packedFileName = fileName(packedFile);
-			String jarFileName = substring(packedFileName, 0, -8);
-			FileWriter writer = new FileWriter(jwsDir + jarFileName + ".var");
-			try {
-				writer.write("URI: packed/" + packedFileName + "\n");
-				writer.write("Content-Type: x-java-archive\n");
-				writer.write("Content-Encoding: pack200-gzip\n");
-				writer.write("URI: unpacked/" + jarFileName + "\n");
-				writer.write("Content-Type: x-java-archive\n");
-			} finally {
-				try {
-					writer.close();
-				} catch (Exception ignored) {
-				}
-			}
-		}
-		FileWriter writer = new FileWriter(jwsDir + ".htaccess");
-		try {
-			writer.write("AddType application/x-java-jnlp-file .jnlp"); // JNLP mime type.
-			writer.write("AddType application/x-java-archive .jar\n"); // JAR mime type.
-			writer.write("AddHandler application/x-type-map .var\n"); // Enable type maps.
-			writer.write("Options +MultiViews\n");
-			writer.write("MultiViewsMatch Any\n"); // Apache 2.0 only.
-			writer.write("<Files *.pack.gz>\n");
-			writer.write("AddEncoding pack200-gzip .jar\n"); // Enable Content-Encoding header for .jar.pack.gz files.
-			writer.write("RemoveEncoding .gz\n"); // Prevent mod_gzip from messing with the Content-Encoding response.
-			writer.write("</Files>\n");
-		} finally {
-			try {
-				writer.close();
-			} catch (Exception ignored) {
-			}
-		}
-	}
-
 	static public void executeCode (String code, HashMap<String, Object> parameters) {
 		executeCode(code, parameters);
 	}
@@ -1238,7 +958,14 @@ public class Scar {
 				}
 			}, diagnostics, options, null, Arrays.asList(new JavaFileObject[] {javaObject})).call();
 
-			if (!diagnostics.getDiagnostics().isEmpty()) {
+			boolean error = false;
+			for (Diagnostic diagnostic : diagnostics.getDiagnostics()) {
+				if (diagnostic.getKind() == javax.tools.Diagnostic.Kind.ERROR) {
+					error = true;
+					break;
+				}
+			}
+			if (error) {
 				StringBuilder buffer = new StringBuilder(1024);
 				for (Diagnostic diagnostic : diagnostics.getDiagnostics()) {
 					if (buffer.length() > 0) buffer.append("\n");
@@ -1407,10 +1134,10 @@ public class Scar {
 				while (in.available() > 0) {
 					int count = in.read(buffer, 0, 1024);
 					if (count < 0) break;
-					System.out.print(new String(buffer, 0, count));
+					if (INFO) info("scar", new String(buffer, 0, count));
 				}
 				if (channel.isClosed()) {
-					System.out.println("Exit: " + channel.getExitStatus());
+					if (INFO) info("scar", "Exit: " + channel.getExitStatus());
 					break;
 				}
 				try {

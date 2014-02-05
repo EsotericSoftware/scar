@@ -193,7 +193,7 @@ public class Build extends Project {
 		else
 			jarFile = project.path("$target$/$name$.jar");
 
-		Scar.jar(jarFile, jarDir, project.get("main"), classpath(project, true));
+		Jar.jar(jarFile, jarDir, project.get("main"), classpath(project, true));
 		return jarFile;
 	}
 
@@ -348,7 +348,7 @@ public class Build extends Project {
 
 		if (project.has("main")) new File(onejarDir, "META-INF/MANIFEST.MF").delete();
 
-		Scar.jar(onejarFile, onejarDir, project.get("main"), classpath(project, true));
+		Jar.jar(onejarFile, onejarDir, project.get("main"), classpath(project, true));
 	}
 
 	/** Calls {@link #build(Project)} for each dependency project in the specified project. */

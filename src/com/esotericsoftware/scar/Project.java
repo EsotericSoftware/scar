@@ -272,14 +272,23 @@ public class Project {
 	/** Returns the specified path if it is an absolute path, otherwise returns the path relative to this project's directory. */
 	public String path (String path) {
 		path = format(path);
-		if (dir == null) return path;
+		if (dir == null) {
+			path = path.replace("//", "/");
+			path = path.replace("\\/", "/");
+			path = path.replace("/\\", "/");
+			return path;
+		}
 		int pipeIndex = path.indexOf('|');
 		if (pipeIndex > -1) {
 			// Handle wildcard search patterns.
-			return path(path.substring(0, pipeIndex)) + path.substring(pipeIndex);
+			path = path(path.substring(0, pipeIndex)) + path.substring(pipeIndex);
+		} else {
+			if (!new File(path).isAbsolute()) path = dir + "/" + path;
 		}
-		if (new File(path).isAbsolute()) return path;
-		return dir + "/" + path;
+		path = path.replace("//", "/");
+		path = path.replace("\\/", "/");
+		path = path.replace("/\\", "/");
+		return path;
 	}
 
 	public void set (Object key, Object object) {
