@@ -10,6 +10,7 @@ import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStreamWriter;
@@ -410,17 +411,20 @@ public class Jar {
 		mkdir(parent(outJar));
 		JarOutputStream outJarStream = new JarOutputStream(new FileOutputStream(outJar));
 		ArrayList<String> names = new ArrayList();
-		for (Enumeration<JarEntry> entries = inJarFile.entries(); entries.hasMoreElements();) {
-			JarEntry inEntry = entries.nextElement();
-			names.add(inEntry.getName().replace('\\', '/'));
-		}
-		if (names.contains(addName)) throw new RuntimeException("JAR already has entry: " + addName);
+		for (Enumeration<JarEntry> entries = inJarFile.entries(); entries.hasMoreElements();)
+			names.add(entries.nextElement().getName());
+
+		if (names.contains(addName.replace('\\', '/')) || names.contains(addName.replace('/', '\\')))
+			throw new RuntimeException("JAR already has entry: " + addName);
+		addName = addName.replace('\\', '/');
 		names.add(addName);
 		Collections.sort(names);
-		if (names.remove("META-INF/MANIFEST.MF")) names.add(0, "META-INF/MANIFEST.MF");
+
+		if (names.remove("META-INF/MANIFEST.MF") || names.remove("META-INF\\MANIFEST.MF")) names.add(0, "META-INF/MANIFEST.MF");
+
 		for (String name : names) {
-			outJarStream.putNextEntry(new JarEntry(name));
-			if (name.equals(addName))
+			outJarStream.putNextEntry(new JarEntry(name.replace('\\', '/')));
+			if (name.replace('\\', '/').equals(addName))
 				outJarStream.write(bytes);
 			else
 				copyStream(inJarFile.getInputStream(inJarFile.getEntry(name)), outJarStream);
@@ -447,5 +451,52 @@ public class Jar {
 		}
 		outJarStream.close();
 		inJarFile.close();
+	}
+
+	static public void setClassVersions (String inJar, String outJar, int max, int min) throws IOException {
+		if (DEBUG) debug("scar", "Setting class versions for JAR: " + inJar + " -> " + outJar + ", " + max + "." + min);
+
+		JarFile inJarFile = new JarFile(inJar);
+		mkdir(parent(outJar));
+		JarOutputStream outJarStream = new JarOutputStream(new FileOutputStream(outJar));
+		for (Enumeration<JarEntry> entries = inJarFile.entries(); entries.hasMoreElements();) {
+			String name = entries.nextElement().getName();
+			outJarStream.putNextEntry(new JarEntry(name));
+			InputStream input = inJarFile.getInputStream(inJarFile.getEntry(name));
+			if (name.endsWith(".class")) input = new ClassVersionStream(input, name, max, min);
+			copyStream(input, outJarStream);
+			outJarStream.closeEntry();
+		}
+		outJarStream.close();
+		inJarFile.close();
+	}
+
+	static class ClassVersionStream extends FilterInputStream {
+		private boolean first = true;
+		private final int max, min;
+		private String name;
+
+		public ClassVersionStream (InputStream in, String name, int max, int min) {
+			super(in);
+			this.name = name;
+			this.max = max;
+			this.min = min;
+		}
+
+		public int read (byte[] b, int off, int len) throws IOException {
+			int count = super.read(b, off, len);
+			if (first) {
+				first = false;
+				if (count < 8) throw new RuntimeException("Too few bytes: " + count);
+				int oldMin = (b[off + 4] << 8) | b[off + 5];
+				int oldMax = ((b[off + 6] & 0xff) << 8) | (b[off + 7] & 0xff);
+				b[off + 4] = (byte)(min >> 8);
+				b[off + 5] = (byte)min;
+				b[off + 6] = (byte)(max >> 8);
+				b[off + 7] = (byte)max;
+				if (DEBUG && (oldMax != max || oldMin != min)) debug(oldMax + "." + oldMin + " to " + max + "." + min + ": " + name);
+			}
+			return count;
+		}
 	}
 }
