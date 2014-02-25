@@ -9,7 +9,6 @@ import SevenZip.LzmaAlone;
 import com.esotericsoftware.wildcard.Paths;
 
 import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -24,7 +23,6 @@ import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.StringReader;
 import java.io.Writer;
-import java.lang.ProcessBuilder.Redirect;
 import java.net.InetAddress;
 import java.net.MalformedURLException;
 import java.net.URI;
@@ -37,14 +35,8 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map.Entry;
-import java.util.jar.Attributes;
-import java.util.jar.JarEntry;
-import java.util.jar.JarInputStream;
-import java.util.jar.JarOutputStream;
-import java.util.jar.Manifest;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.zip.Deflater;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 import java.util.zip.ZipEntry;
@@ -403,6 +395,8 @@ public class Scar {
 			sourceChannel = new FileInputStream(in).getChannel();
 			destinationChannel = new FileOutputStream(out).getChannel();
 			sourceChannel.transferTo(0, sourceChannel.size(), destinationChannel);
+		} catch (IOException ex) {
+			throw new IOException("Error copying: " + in + "\nTo: " + out, ex);
 		} finally {
 			try {
 				if (sourceChannel != null) sourceChannel.close();
@@ -808,7 +802,7 @@ public class Scar {
 	}
 
 	static public Paths path (String dir, String file) {
-		return new Paths().addFile(file);
+		return new Paths().add(dir, file);
 	}
 
 	static public Paths paths (String dir, String... patterns) {
@@ -1100,7 +1094,7 @@ public class Scar {
 				}
 			}
 		} catch (Exception ex) {
-			throw new IOException(ex);
+			throw new IOException("Error uploading to: " + user + "@" + server + ":" + port + " " + dir, ex);
 		} finally {
 			try {
 				if (session != null) session.disconnect();
