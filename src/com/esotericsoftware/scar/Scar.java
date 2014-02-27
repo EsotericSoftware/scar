@@ -294,7 +294,7 @@ public class Scar {
 	}
 
 	/** Splits the specified command at spaces that are not surrounded by quotes and passes the result to {@link #shell(String...)}. */
-	static public void shell (String command) throws IOException {
+	static public String shell (String command) throws IOException {
 		List<String> matchList = new ArrayList<String>();
 		Pattern regex = Pattern.compile("[^\\s\"']+|\"([^\"]*)\"|'([^']*)'");
 		Matcher regexMatcher = regex.matcher(command);
@@ -306,12 +306,12 @@ public class Scar {
 			else
 				matchList.add(regexMatcher.group());
 		}
-		shell(matchList.toArray(new String[matchList.size()]));
+		return shell(matchList.toArray(new String[matchList.size()]));
 	}
 
 	/** Executes the specified shell command. {@link #resolvePath(String)} is used to locate the file to execute. If not found, on
 	 * Windows the same filename with an "exe" extension is also tried. */
-	static public void shell (String... command) throws IOException {
+	static public String shell (String... command) throws IOException {
 		if (command == null) throw new IllegalArgumentException("command cannot be null.");
 		if (command.length == 0) throw new IllegalArgumentException("command cannot be empty.");
 
@@ -331,6 +331,7 @@ public class Scar {
 			trace("scar", "Executing command: " + buffer);
 		}
 		final Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
+		final StringBuilder outputBuffer = new StringBuilder(512);
 		new Thread("shell") {
 			public void run () {
 				BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
@@ -338,6 +339,8 @@ public class Scar {
 					while (true) {
 						String line = reader.readLine();
 						if (line == null) break;
+						outputBuffer.append(line);
+						outputBuffer.append('\n');
 						if (INFO) info("scar", line);
 					}
 					reader.close();
@@ -359,6 +362,7 @@ public class Scar {
 			}
 			throw new RuntimeException("Error executing command: " + buffer);
 		}
+		return outputBuffer.toString();
 	}
 
 	/** Reads to the end of the input stream and writes the bytes to the output stream. The input stream is closed, the output is
