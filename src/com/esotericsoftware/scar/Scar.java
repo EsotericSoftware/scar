@@ -813,7 +813,7 @@ public class Scar {
 		return new Paths(dir, patterns);
 	}
 
-	static public void compile (Paths source, Paths classpath, String outputDir) {
+	static public void compile (Paths source, Paths classpath, String outputDir, String targetVersion) {
 		if (source.isEmpty()) {
 			if (WARN) warn("scar", "No source files found.");
 			return;
@@ -825,9 +825,9 @@ public class Scar {
 		args.add(outputDir);
 		args.add("-g:source,lines");
 		args.add("-source");
-		args.add("1.6");
+		args.add(targetVersion);
 		args.add("-target");
-		args.add("1.6");
+		args.add(targetVersion);
 		args.addAll(source.getPaths());
 		if (classpath != null && !classpath.isEmpty()) {
 			args.add("-classpath");

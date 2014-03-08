@@ -166,7 +166,7 @@ public class Build extends Project {
 
 		String classesDir = mkdir(project.path("$target$/classes/"));
 
-		Scar.compile(source, classpath, classesDir);
+		Scar.compile(source, classpath, classesDir, project.get("compileTarget", "1.6"));
 		return classesDir;
 	}
 
