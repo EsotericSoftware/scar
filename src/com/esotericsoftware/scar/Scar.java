@@ -35,6 +35,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map.Entry;
+import java.util.Scanner;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
@@ -1152,6 +1153,12 @@ public class Scar {
 			} catch (Exception ignored) {
 			}
 		}
+	}
+
+	static public String http (String url) throws IOException {
+		if (INFO) info("scar", "HTTP: " + url);
+		Scanner scanner = new Scanner(new URL(url).openStream()).useDelimiter("\\A");
+		return scanner.hasNext() ? scanner.next() : "";
 	}
 
 	static public ArrayList list (Object... objects) {
