@@ -838,7 +838,7 @@ public class Scar {
 		JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
 		if (compiler == null)
 			throw new RuntimeException("No compiler available. Ensure you are running from a 1.6+ JDK, and not a JRE.");
-		if (compiler.run(null, null, null, args.toArray(new String[args.size()])) != 0) {
+		if (compiler.run(System.in, System.out, System.err, args.toArray(new String[args.size()])) != 0) {
 			throw new RuntimeException("Error during compilation.\nSource: " + source.count() + " files\nClasspath: " + classpath);
 		}
 		try {
