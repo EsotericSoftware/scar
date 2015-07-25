@@ -44,7 +44,8 @@ public class Jar {
 		jar(outputFile, inputPaths, null, null);
 	}
 
-	// BOZO - javadoc
+	/** @param mainClass May be null.
+	 * @param classpath May be null if mainClass is null. */
 	static public void jar (String outputFile, Paths inputPaths, String mainClass, Paths classpath) throws IOException {
 		if (outputFile == null) throw new IllegalArgumentException("jarFile cannot be null.");
 		if (inputPaths == null) throw new IllegalArgumentException("inputPaths cannot be null.");
