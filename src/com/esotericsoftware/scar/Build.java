@@ -67,8 +67,8 @@ public class Build extends Project {
 				if (dashIndex != -1) name = name.substring(0, dashIndex);
 				if (name.equals(dependencyName)) {
 					if (DEBUG) {
-						debug(project.toString(), "Ignoring dependency: " + dependencyName + " (already on classpath: " + classpathFile
-							+ ")");
+						debug(project.toString(),
+							"Ignoring dependency: " + dependencyName + " (already on classpath: " + classpathFile + ")");
 					}
 					project.remove("dependencies", dependency);
 					break;
@@ -197,9 +197,9 @@ public class Build extends Project {
 		return jarFile;
 	}
 
-	/** Collects the distribution files using the "dist" property, the project's JAR file, and everything on the project's classpath
-	 * (including dependency project classpaths) and places them into a "dist" directory under the "target" directory. This is also
-	 * done for depenency projects, recursively. This is everything the application needs to be run from JAR files.
+	/** Collects the distribution files using the "dist" property, the project's JAR file, and everything on the project's
+	 * classpath (including dependency project classpaths) and places them into a "dist" directory under the "target" directory.
+	 * This is also done for depenency projects, recursively. This is everything the application needs to be run from JAR files.
 	 * @return The path to the "dist" directory. */
 	static public String dist (Project project) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
@@ -255,9 +255,9 @@ public class Build extends Project {
 		Scar.jwsHtaccess(mkdir(project.path("$target$/jws/")));
 	}
 
-	/** Generates a JNLP file in the "jws" directory. JARs in the "jws" directory are included in the JNLP. JARs containing "native"
-	 * and "win", "mac", "linux", or "solaris" are properly included in the native section of the JNLP. The "main" property is used
-	 * for the main class in the JNLP.
+	/** Generates a JNLP file in the "jws" directory. JARs in the "jws" directory are included in the JNLP. JARs containing
+	 * "native" and "win", "mac", "linux", or "solaris" are properly included in the native section of the JNLP. The "main"
+	 * property is used for the main class in the JNLP.
 	 * @param splashImage Can be null. */
 	static public void jnlp (Project project, String url, String company, String title, String splashImage) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
@@ -316,18 +316,25 @@ public class Build extends Project {
 	 * but may overwrite other files.
 	 * @param excludeJARs The names of any JARs to exclude. */
 	static public void oneJAR (Project project, String... excludeJARs) throws IOException {
+		String onejarDir = oneJAR_unzip(project, excludeJARs);
+		oneJAR_jar(project, onejarDir);
+	}
+
+	static public String oneJAR_unzip (Project project, String... excludeJARs) throws IOException {
 		if (project == null) throw new IllegalArgumentException("project cannot be null.");
 
 		if (INFO) info(project.toString(), "One JAR");
 
-		String onejarDir = mkdir(project.path("$target$/onejar/"));
 		String distDir = project.path("$target$/dist/");
+		paths(distDir, "!*.jar", "!onejar").copyTo(project.path("$target$/dist/onejar"));
+
 		String projectJarName;
 		if (project.has("version"))
 			projectJarName = project.format("$name$-$version$.jar");
 		else
 			projectJarName = project.format("$name$.jar");
 
+		String onejarDir = mkdir(project.path("$target$/onejar/"));
 		ArrayList<String> processedJARs = new ArrayList();
 		outer:
 		for (String jarFile : paths(distDir, "*.jar", "!" + projectJarName)) {
@@ -339,14 +346,18 @@ public class Build extends Project {
 		}
 		unzip(distDir + projectJarName, onejarDir);
 
+		if (project.has("main")) new File(onejarDir, "META-INF/MANIFEST.MF").delete();
+
+		return onejarDir;
+	}
+
+	static public void oneJAR_jar (Project project, String onejarDir) throws IOException {
 		String onejarFile;
 		if (project.has("version"))
 			onejarFile = project.path("$target$/dist/onejar/$name$-$version$-all.jar");
 		else
 			onejarFile = project.path("$target$/dist/onejar/$name$-all.jar");
 		mkdir(parent(onejarFile));
-
-		if (project.has("main")) new File(onejarDir, "META-INF/MANIFEST.MF").delete();
 
 		Jar.jar(onejarFile, onejarDir, project.get("main"), classpath(project, true));
 	}
