@@ -68,6 +68,7 @@ public class Scar {
 	/** The Scar installation directory. The value comes from the SCAR_HOME environment variable, if it exists. Alternatively, the
 	 * "scar.home" System property can be defined. */
 	static public final String SCAR_HOME;
+
 	static {
 		if (System.getProperty("scar.home") != null)
 			SCAR_HOME = System.getProperty("scar.home");
@@ -115,7 +116,8 @@ public class Scar {
 		return foundFile;
 	}
 
-	/** Encodes the specified file with GZIP. The resulting filename is the filename plus ".gz". The file is deleted after encoding.
+	/** Encodes the specified file with GZIP. The resulting filename is the filename plus ".gz". The file is deleted after
+	 * encoding.
 	 * @return The path to the encoded file. */
 	static public String gzip (String file) throws IOException {
 		String gzipFile = gzip(file, file + ".gz");
@@ -294,7 +296,8 @@ public class Scar {
 		return file.getAbsolutePath();
 	}
 
-	/** Splits the specified command at spaces that are not surrounded by quotes and passes the result to {@link #shell(String...)}. */
+	/** Splits the specified command at spaces that are not surrounded by quotes and passes the result to {@link #shell(String...)}
+	 * . */
 	static public String shell (String command) throws IOException {
 		List<String> matchList = new ArrayList<String>();
 		Pattern regex = Pattern.compile("[^\\s\"']+|\"([^\"]*)\"|'([^']*)'");
@@ -517,7 +520,8 @@ public class Scar {
 		return new File(path).exists();
 	}
 
-	/** Returns the canonical path for the specified path. Eg, if "." is passed, this will resolve the actual path and return it. */
+	/** Returns the canonical path for the specified path. Eg, if "." is passed, this will resolve the actual path and return
+	 * it. */
 	static public String canonical (String path) {
 		if (path == null) throw new IllegalArgumentException("path cannot be null.");
 
@@ -554,6 +558,11 @@ public class Scar {
 	/** Returns only the filename portion of the specified path. */
 	static public String fileName (String path) {
 		return new File(canonical(path)).getName();
+	}
+
+	/** Returns only the filename portion of the specified path. */
+	static public long fileLastModified (String path) {
+		return new File(canonical(path)).lastModified();
 	}
 
 	/** Returns the parent directory of the specified path. */
@@ -760,8 +769,8 @@ public class Scar {
 			writer.write("<html>\n");
 			writer.write("<head><title>Applet</title></head>\n");
 			writer.write("<body>\n");
-			writer
-				.write("<applet code='org.lwjgl.util.applet.AppletLoader' archive='lwjgl_util_applet.jar, lzma.jar' codebase='.' width='640' height='480'>\n");
+			writer.write(
+				"<applet code='org.lwjgl.util.applet.AppletLoader' archive='lwjgl_util_applet.jar, lzma.jar' codebase='.' width='640' height='480'>\n");
 			writer.write("<param name='al_version' value='1.0'>\n");
 			writer.write("<param name='al_title' value='applet'>\n");
 			writer.write("<param name='al_main' value='" + mainClass + "'>\n");
@@ -790,8 +799,8 @@ public class Scar {
 			writer.write("<param name='al_logo' value='appletlogo.png'>\n");
 			writer.write("<param name='al_progressbar' value='appletprogress.gif'>\n");
 			writer.write("<param name='separate_jvm' value='true'>\n");
-			writer
-				.write("<param name='java_arguments' value='-Dsun.java2d.noddraw=true -Dsun.awt.noerasebackground=true -Dsun.java2d.d3d=false -Dsun.java2d.opengl=false -Dsun.java2d.pmoffscreen=false'>\n");
+			writer.write(
+				"<param name='java_arguments' value='-Dsun.java2d.noddraw=true -Dsun.awt.noerasebackground=true -Dsun.java2d.d3d=false -Dsun.java2d.opengl=false -Dsun.java2d.pmoffscreen=false'>\n");
 			writer.write("</applet>\n");
 			writer.write("</body></html>\n");
 		} finally {
@@ -829,6 +838,8 @@ public class Scar {
 		args.add(targetVersion);
 		args.add("-target");
 		args.add(targetVersion);
+		args.add("-encoding");
+		args.add("UTF-8");
 		args.addAll(source.getPaths());
 		if (classpath != null && !classpath.isEmpty()) {
 			args.add("-classpath");
