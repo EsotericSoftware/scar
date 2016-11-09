@@ -13,6 +13,7 @@ import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.FileWriter;
@@ -58,7 +59,9 @@ import org.apache.commons.net.ftp.FTPClient;
 import com.jcraft.jsch.ChannelExec;
 import com.jcraft.jsch.ChannelSftp;
 import com.jcraft.jsch.JSch;
+import com.jcraft.jsch.JSchException;
 import com.jcraft.jsch.Session;
+import com.jcraft.jsch.SftpException;
 import com.jcraft.jsch.SftpProgressMonitor;
 
 // BOZO - Add javadocs method.
@@ -1060,62 +1063,126 @@ public class Scar {
 		return true;
 	}
 
-	static public void sftpUpload (String server, String user, String password, String dir, Paths paths) throws IOException {
-		sftpUpload(server, 22, user, password, dir, paths);
-	}
-
 	static public void sftpUpload (String server, int port, String user, String password, String dir, Paths paths)
 		throws IOException {
+		sftpUpload(server, port, user, password, dir, paths, null, true);
+	}
+
+	static public void sftpUpload (String server, int port, String user, String password, String dir, Paths paths,
+		final ProgressMonitor monitor, final boolean printProgress) throws IOException {
 		Session session = null;
-		ChannelSftp channel = null;
 		try {
-			session = new JSch().getSession(user, server, port);
-			session.setConfig("StrictHostKeyChecking", "no");
-			session.setPassword(password);
-			session.connect();
+			long total = 0;
+			for (String path : paths)
+				total += new File(path).length();
 
-			channel = (ChannelSftp)session.openChannel("sftp");
-			channel.connect();
-			channel.cd(dir);
+			ChannelSftp channel = null;
+			boolean reconnecting = false;
 			for (String path : paths) {
-				if (INFO) info("scar", "SFTP upload: " + path);
-				final File file = new File(path);
-				BufferedInputStream input = new BufferedInputStream(new FileInputStream(file));
-				try {
-					channel.put(input, new File(path).getName(), new SftpProgressMonitor() {
-						private long total, interval = Math.max(1, file.length() / 76), lastCount;
-
-						public void init (int op, String source, String dest, long max) {
-							System.out.print("|-");
-						}
-
-						public void end () {
-							System.out.println("|");
-						}
-
-						public boolean count (long count) {
-							total += count;
-							while (total - lastCount >= interval) {
-								lastCount += interval;
-								System.out.print("-");
-							}
-							return true;
-						}
-					});
-				} finally {
+				SftpFileUpload fileUpload = new SftpFileUpload(path, total, monitor, printProgress);
+				if (INFO) info("scar", "SFTP upload: " + fileUpload.file.getName() + " -> " + dir);
+				while (true) {
+					// Connect.
 					try {
-						input.close();
-					} catch (Exception ignored) {
+						if (session == null || !session.isConnected()) {
+							session = new JSch().getSession(user, server, port);
+							session.setConfig("StrictHostKeyChecking", "no");
+							session.setPassword(password);
+							session.connect();
+							if (channel != null) channel.disconnect();
+							channel = null;
+						}
+						if (channel == null || !channel.isConnected()) {
+							channel = (ChannelSftp)session.openChannel("sftp");
+							channel.connect();
+							channel.cd(dir);
+							reconnecting = false;
+						}
+					} catch (Exception ex) {
+						if (!reconnecting) {
+							reconnecting = true;
+							if (WARN) warn("Connecting...");
+						}
+						try {
+							Thread.sleep(250);
+						} catch (Exception ee) {
+						}
+						continue;
+					}
+					// Upload.
+					try {
+						fileUpload.upload(channel);
+						break;
+					} catch (FileNotFoundException ex) {
+						throw ex;
+					} catch (Exception ex) {
+						continue;
 					}
 				}
 			}
 		} catch (Exception ex) {
-			throw new IOException("Error uploading to: " + user + "@" + server + ":" + port + " " + dir, ex);
+			throw new IOException(ex);
 		} finally {
+			if (session != null) session.disconnect();
+		}
+	}
+
+	static private class SftpFileUpload {
+		final File file;
+		final long total, fileLength, interval;
+		long fileCount, lastCount, totalCount;
+		final ProgressMonitor monitor;
+		final boolean printProgress;
+
+		final SftpProgressMonitor sftpMonitor = new SftpProgressMonitor() {
+			public void init (int op, String source, String dest, long max) {
+				if (!printProgress) return;
+				System.out.print("|-");
+				if (fileCount > 0) {
+					lastCount = 0;
+					while (fileCount - lastCount >= interval) {
+						lastCount += interval;
+						System.out.print("-");
+					}
+				}
+			}
+
+			public void end () {
+				if (printProgress) System.out.println("|");
+			}
+
+			public boolean count (long c) {
+				totalCount += c;
+				fileCount += c;
+				if (printProgress) {
+					while (fileCount - lastCount >= interval) {
+						lastCount += interval;
+						System.out.print("-");
+					}
+				}
+				if (monitor != null) monitor.progress((float)(fileCount / (double)fileLength), (float)(totalCount / (double)total));
+				return true;
+			}
+		};
+
+		SftpFileUpload (String path, long total, ProgressMonitor monitor, boolean printProgress) throws IOException {
+			this.printProgress = printProgress;
+			file = new File(path);
+			this.total = total;
+			this.monitor = monitor;
+			fileLength = file.length();
+			interval = Math.max(1, fileLength / 76);
+		}
+
+		void upload (ChannelSftp channel) throws Exception {
+			BufferedInputStream input = new BufferedInputStream(new FileInputStream(file));
 			try {
-				if (session != null) session.disconnect();
-				if (channel != null) channel.exit();
-			} catch (Exception ignored) {
+				channel.put(input, file.getName(), sftpMonitor, fileCount == 0 ? ChannelSftp.OVERWRITE : ChannelSftp.RESUME);
+			} finally {
+				try {
+					input.close();
+				} catch (Exception ignored) {
+				}
 			}
 		}
 	}
@@ -1181,6 +1248,10 @@ public class Scar {
 	}
 
 	private Scar () {
+	}
+
+	static public interface ProgressMonitor {
+		public void progress (float fileProgress, float totalProgress);
 	}
 
 	static public void main (String[] args) throws IOException {
