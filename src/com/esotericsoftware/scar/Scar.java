@@ -1187,12 +1187,13 @@ public class Scar {
 		}
 	}
 
-	static public void ssh (String server, String user, String password, String command) throws IOException {
-		ssh(server, 22, user, password, command);
+	static public String ssh (String server, String user, String password, String command) throws IOException {
+		return ssh(server, 22, user, password, command);
 	}
 
-	static public void ssh (String server, int port, String user, String password, String command) throws IOException {
+	static public String ssh (String server, int port, String user, String password, String command) throws IOException {
 		if (INFO) info("scar", "SSH: " + command);
+		StringBuilder result = new StringBuilder();
 		Session session = null;
 		ChannelExec channel = null;
 		try {
@@ -1204,14 +1205,16 @@ public class Scar {
 			channel.setCommand(command);
 			channel.setInputStream(null);
 			channel.setErrStream(System.err);
-			InputStream in = channel.getInputStream();
+			BufferedReader reader = new BufferedReader(new InputStreamReader(channel.getInputStream()));
 			channel.connect();
 			byte[] buffer = new byte[1024];
 			while (true) {
-				while (in.available() > 0) {
-					int count = in.read(buffer, 0, 1024);
-					if (count < 0) break;
-					if (INFO) info("scar", new String(buffer, 0, count));
+				while (true) {
+					String line = reader.readLine();
+					if (line == null) break;
+					result.append(line);
+					result.append('\n');
+					if (INFO) info("scar", line);
 				}
 				if (channel.isClosed()) {
 					if (INFO) info("scar", "Exit: " + channel.getExitStatus());
@@ -1231,6 +1234,7 @@ public class Scar {
 			} catch (Exception ignored) {
 			}
 		}
+		return result.toString();
 	}
 
 	static public String http (String url) throws IOException {
