@@ -8,6 +8,6 @@
 	<classpathentry kind="lib" path="lib/yamlbeans-1.05.jar"/>
 	<classpathentry combineaccessrules="false" exported="true" kind="src" path="/wildcard"/>
 	<classpathentry kind="lib" path="lib/wildcard-1.03.jar"/>
-	<classpathentry kind="lib" path="lib/jsch-0.1.50.jar"/>
+	<classpathentry kind="lib" path="lib/jsch-0.1.54.jar"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>
