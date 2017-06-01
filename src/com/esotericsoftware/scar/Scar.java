@@ -57,6 +57,7 @@ import com.jcraft.jsch.ChannelExec;
 import com.jcraft.jsch.ChannelSftp;
 import com.jcraft.jsch.JSch;
 import com.jcraft.jsch.Session;
+import com.jcraft.jsch.SftpException;
 import com.jcraft.jsch.SftpProgressMonitor;
 
 import SevenZip.LzmaAlone;
@@ -1151,7 +1152,18 @@ public class Scar {
 					}
 
 					if (cd) {
-						channel.cd(dir);
+						try {
+							channel.cd(dir);
+						} catch (SftpException cdEx) {
+							switch (cdEx.id) {
+							case ChannelSftp.SSH_FX_NO_SUCH_FILE:
+							case ChannelSftp.SSH_FX_BAD_MESSAGE:
+							case ChannelSftp.SSH_FX_OP_UNSUPPORTED:
+							case ChannelSftp.SSH_FX_PERMISSION_DENIED:
+								throw cdEx;
+							}
+							if (TRACE) trace("scar", "Error changing remote directory.", cdEx);
+						}
 						cd = false;
 					}
 
@@ -1162,6 +1174,7 @@ public class Scar {
 					} catch (FileNotFoundException ex) {
 						throw ex;
 					} catch (Exception ex) {
+						if (TRACE) trace("scar", "Error during upload.", ex);
 						continue;
 					}
 				}
