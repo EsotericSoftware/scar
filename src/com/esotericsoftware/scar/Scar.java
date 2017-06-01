@@ -4,10 +4,6 @@ package com.esotericsoftware.scar;
 import static com.esotericsoftware.minlog.Log.*;
 import static com.esotericsoftware.scar.Jar.*;
 
-import SevenZip.LzmaAlone;
-
-import com.esotericsoftware.wildcard.Paths;
-
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
@@ -56,13 +52,14 @@ import javax.tools.ToolProvider;
 
 import org.apache.commons.net.ftp.FTPClient;
 
+import com.esotericsoftware.wildcard.Paths;
 import com.jcraft.jsch.ChannelExec;
 import com.jcraft.jsch.ChannelSftp;
 import com.jcraft.jsch.JSch;
-import com.jcraft.jsch.JSchException;
 import com.jcraft.jsch.Session;
-import com.jcraft.jsch.SftpException;
 import com.jcraft.jsch.SftpProgressMonitor;
+
+import SevenZip.LzmaAlone;
 
 // BOZO - Add javadocs method.
 
@@ -346,9 +343,9 @@ public class Scar {
 					while (true) {
 						String line = reader.readLine();
 						if (line == null) break;
+						if (INFO && (line.length() > 0 || outputBuffer.length() > 0)) info("scar", line);
 						outputBuffer.append(line);
 						outputBuffer.append('\n');
-						if (INFO) info("scar", line);
 					}
 					reader.close();
 				} catch (Exception ex) {
@@ -853,6 +850,8 @@ public class Scar {
 		if (compiler == null)
 			throw new RuntimeException("No compiler available. Ensure you are running from a 1.6+ JDK, and not a JRE.");
 		if (compiler.run(System.in, System.out, System.err, args.toArray(new String[args.size()])) != 0) {
+			System.out.flush();
+			System.err.flush();
 			throw new RuntimeException("Error during compilation.\nSource: " + source.count() + " files\nClasspath: " + classpath);
 		}
 		try {
@@ -948,7 +947,7 @@ public class Scar {
 					buffer.append(pathSeparator);
 					buffer.append(new File(url.toURI()).getCanonicalPath());
 				}
-				if (TRACE) trace("Using classpath: " + buffer);
+				if (TRACE) trace("scar", "Using classpath: " + buffer);
 				options.add("-classpath");
 				options.add(buffer.toString());
 			}
@@ -1070,38 +1069,79 @@ public class Scar {
 
 	static public void sftpUpload (String server, int port, String user, String password, String dir, Paths paths,
 		final ProgressMonitor monitor, final boolean printProgress) throws IOException {
-		Session session = null;
+		sftpUpload( //
+			server, port, user, password, //
+			null, 0, null, null, //
+			dir, paths, null, true);
+	}
+
+	/** Upload through an SSH tunnel using an intermediate server.
+	 * <p>
+	 * Note some users have reported needing to use IP addresses. */
+	static public void sftpUpload ( //
+		String server1, int port1, String user1, final String password1, //
+		String server2, int port2, String user2, final String password2, //
+		String dir, Paths paths, final ProgressMonitor monitor, final boolean printProgress) throws IOException {
+
+		Session session1 = null, session2 = null, session = null;
 		try {
 			long total = 0;
 			for (String path : paths)
 				total += new File(path).length();
 
+			if (TRACE) {
+				JSch.setLogger(new com.jcraft.jsch.Logger() {
+					public boolean isEnabled (int pLevel) {
+						return true;
+					}
+
+					public void log (int level, String message) {
+						trace("scar", message);
+					}
+				});
+			}
+
+			JSch jsch = new JSch();
 			ChannelSftp channel = null;
-			boolean reconnecting = false;
+			boolean reconnecting = false, cd = true;
 			for (String path : paths) {
 				SftpFileUpload fileUpload = new SftpFileUpload(path, total, monitor, printProgress);
 				if (INFO) info("scar", "SFTP upload: " + fileUpload.file.getName() + " -> " + dir);
 				while (true) {
 					// Connect.
 					try {
-						if (session == null || !session.isConnected()) {
-							session = new JSch().getSession(user, server, port);
-							session.setConfig("StrictHostKeyChecking", "no");
-							session.setPassword(password);
-							session.connect();
-							if (channel != null) channel.disconnect();
+						if (session1 == null || !session1.isConnected() || (server2 != null && !session2.isConnected())) {
+							if (session1 != null) session1.disconnect();
+							if (session2 != null) session2.disconnect();
 							channel = null;
+
+							session1 = jsch.getSession(user1, server1, port1);
+							session1.setPassword(password1);
+							session1.setConfig("StrictHostKeyChecking", "no");
+							session1.connect(10000);
+
+							if (server2 != null) {
+								int forwardPort = session1.setPortForwardingL(0, server2, port2);
+								session2 = jsch.getSession(user2, "127.0.0.1", forwardPort);
+								session2.setPassword(password2);
+								session2.setConfig("StrictHostKeyChecking", "no");
+								session2.setHostKeyAlias(server2);
+								session2.connect(10000);
+								session = session2;
+							} else
+								session = session1;
 						}
 						if (channel == null || !channel.isConnected()) {
 							channel = (ChannelSftp)session.openChannel("sftp");
 							channel.connect();
-							channel.cd(dir);
 							reconnecting = false;
+							cd = true;
 						}
 					} catch (Exception ex) {
+						if (TRACE) trace("scar", "Connection error.", ex);
 						if (!reconnecting) {
 							reconnecting = true;
-							if (WARN) warn("Connecting...");
+							if (WARN) warn("scar", "Connecting...");
 						}
 						try {
 							Thread.sleep(250);
@@ -1109,6 +1149,12 @@ public class Scar {
 						}
 						continue;
 					}
+
+					if (cd) {
+						channel.cd(dir);
+						cd = false;
+					}
+
 					// Upload.
 					try {
 						fileUpload.upload(channel);
@@ -1123,7 +1169,8 @@ public class Scar {
 		} catch (Exception ex) {
 			throw new IOException(ex);
 		} finally {
-			if (session != null) session.disconnect();
+			if (session2 != null) session2.disconnect();
+			if (session1 != null) session1.disconnect();
 		}
 	}
 
