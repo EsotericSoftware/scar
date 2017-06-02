@@ -1146,7 +1146,7 @@ public class Scar {
 						}
 						try {
 							Thread.sleep(250);
-						} catch (Exception ee) {
+						} catch (Exception ignored) {
 						}
 						continue;
 					}
