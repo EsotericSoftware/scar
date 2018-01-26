@@ -2,47 +2,22 @@
 package com.esotericsoftware.scar;
 
 import java.io.BufferedReader;
-import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.FileReader;
-import java.io.FileWriter;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.io.StringReader;
-import java.net.MalformedURLException;
-import java.net.URI;
-import java.net.URL;
-import java.net.URLClassLoader;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
-import java.util.jar.Attributes;
-import java.util.jar.Manifest;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
-import javax.tools.Diagnostic;
-import javax.tools.DiagnosticCollector;
-import javax.tools.FileObject;
-import javax.tools.ForwardingJavaFileManager;
-import javax.tools.JavaCompiler;
-import javax.tools.JavaFileObject;
-import javax.tools.JavaFileObject.Kind;
-import javax.tools.SimpleJavaFileObject;
-import javax.tools.ToolProvider;
 
 import com.esotericsoftware.wildcard.Paths;
 import com.esotericsoftware.yamlbeans.YamlException;
 import com.esotericsoftware.yamlbeans.YamlReader;
 import com.esotericsoftware.yamlbeans.parser.Parser.ParserException;
 import com.esotericsoftware.yamlbeans.tokenizer.Tokenizer.TokenizerException;
-
-import static com.esotericsoftware.minlog.Log.*;
-import static com.esotericsoftware.scar.Scar.*;
 
 /** Generic data structure that contains information needed to perform tasks. */
 public class Project {
@@ -96,8 +71,8 @@ public class Project {
 			}
 
 			YamlReader yamlReader = new YamlReader(new StringReader(buffer.toString())) {
-				protected Object readValue (Class type, Class elementType, Class defaultType) throws YamlException, ParserException,
-					TokenizerException {
+				protected Object readValue (Class type, Class elementType, Class defaultType)
+					throws YamlException, ParserException, TokenizerException {
 					Object value = super.readValue(type, elementType, defaultType);
 					if (value instanceof String) value = ((String)value).replaceAll("\\$dir\\$", dir);
 					return value;
@@ -194,8 +169,8 @@ public class Project {
 		return (Boolean)value;
 	}
 
-	/** Returns a list of strings under the specified key. If the key is a single value, it is placed in a list and returned. If the
-	 * key does not exist, an empty list is returned. */
+	/** Returns a list of strings under the specified key. If the key is a single value, it is placed in a list and returned. If
+	 * the key does not exist, an empty list is returned. */
 	public List<String> getList (Object key, String... defaultValues) {
 		Object object = getObject(key);
 		if (!(object instanceof List)) {
@@ -211,8 +186,8 @@ public class Project {
 		return list;
 	}
 
-	/** Returns a list of objects under the specified key. If the key is a single value, it is placed in a list and returned. If the
-	 * key does not exist, an empty list is returned. */
+	/** Returns a list of objects under the specified key. If the key is a single value, it is placed in a list and returned. If
+	 * the key does not exist, an empty list is returned. */
 	public List getObjectList (Object key, Object... defaultValues) {
 		Object object = getObject(key);
 		if (!(object instanceof List)) {
@@ -261,10 +236,21 @@ public class Project {
 		Paths paths = new Paths();
 		Object object = data.get(key);
 		if (object instanceof List) {
-			for (Object dirPattern : (List)object)
-				paths.glob(path((String)dirPattern));
+			for (Object dirPattern : (List)object) {
+				String dir = path((String)dirPattern);
+				File file = new File(dir);
+				if (!file.isDirectory() && file.exists())
+					paths.addFile(dir);
+				else
+					paths.glob(dir);
+			}
 		} else if (object instanceof String) {
-			paths.glob(path((String)object));
+			String dir = path((String)object);
+			File file = new File(dir);
+			if (!file.isDirectory() && file.exists())
+				paths.addFile(dir);
+			else
+				paths.glob(dir);
 		}
 		return paths;
 	}
@@ -316,8 +302,8 @@ public class Project {
 		data.remove(key);
 	}
 
-	/** Removes an item from a list or map. If the data under the specified key is a list, the entry equal to the specified value is
-	 * removed. If the data under the specified key is a map, the entry with the key specified by value is removed. */
+	/** Removes an item from a list or map. If the data under the specified key is a list, the entry equal to the specified value
+	 * is removed. If the data under the specified key is a map, the entry with the key specified by value is removed. */
 	public void remove (Object key, Object value) {
 		Object object = data.get(key);
 		if (object instanceof Map)
