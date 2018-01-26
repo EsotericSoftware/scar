@@ -161,7 +161,7 @@ public class Build extends Project {
 		if (INFO) info(project.toString(), "Compile");
 		if (DEBUG) {
 			debug(project.toString(), "Source: " + source.count() + " files");
-			debug(project.toString(), "Classpath: " + classpath);
+			debug(project.toString(), "Classpath: " + classpath.toString("\n"));
 		}
 
 		String classesDir = mkdir(project.path("$target$/classes/"));
