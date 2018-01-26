@@ -853,7 +853,8 @@ public class Scar {
 		if (compiler.run(System.in, System.out, System.err, args.toArray(new String[args.size()])) != 0) {
 			System.out.flush();
 			System.err.flush();
-			throw new RuntimeException("Error during compilation.\nSource: " + source.count() + " files\nClasspath: " + classpath);
+			throw new RuntimeException(
+				"Error during compilation.\nSource: " + source.count() + " files\nClasspath:\n" + classpath.toString("\n"));
 		}
 		try {
 			Thread.sleep(100);
@@ -1134,7 +1135,7 @@ public class Scar {
 						}
 						if (channel == null || !channel.isConnected()) {
 							channel = (ChannelSftp)session.openChannel("sftp");
-							channel.connect();
+							channel.connect(10000);
 							reconnecting = false;
 							cd = true;
 						}
@@ -1256,17 +1257,34 @@ public class Scar {
 		StringBuilder result = new StringBuilder();
 		Session session = null;
 		ChannelExec channel = null;
+
+		// Connect.
+		BufferedReader reader;
+		while (true) {
+			try {
+				session = new JSch().getSession(user, server, port);
+				session.setConfig("StrictHostKeyChecking", "no");
+				session.setPassword(password);
+				session.connect(10000);
+				channel = (ChannelExec)session.openChannel("exec");
+				channel.setCommand(command);
+				channel.setInputStream(null);
+				channel.setErrStream(System.err);
+				reader = new BufferedReader(new InputStreamReader(channel.getInputStream()));
+				channel.connect(10000);
+				break;
+			} catch (Exception ex) {
+				if (TRACE) trace("scar", "Connection error.", ex);
+				if (WARN) warn("scar", "Connecting...");
+				try {
+					Thread.sleep(250);
+				} catch (Exception ignored) {
+				}
+				continue;
+			}
+		}
+
 		try {
-			session = new JSch().getSession(user, server, port);
-			session.setConfig("StrictHostKeyChecking", "no");
-			session.setPassword(password);
-			session.connect();
-			channel = (ChannelExec)session.openChannel("exec");
-			channel.setCommand(command);
-			channel.setInputStream(null);
-			channel.setErrStream(System.err);
-			BufferedReader reader = new BufferedReader(new InputStreamReader(channel.getInputStream()));
-			channel.connect();
 			byte[] buffer = new byte[1024];
 			while (true) {
 				while (true) {
