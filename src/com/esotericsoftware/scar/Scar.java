@@ -200,7 +200,7 @@ public class Scar {
 
 		ZipInputStream input = new ZipInputStream(new FileInputStream(zipFile));
 		try {
-			byte[] buffer = new byte[4096];
+			byte[] buffer = new byte[1024 * 10];
 			while (true) {
 				ZipEntry entry = input.getNextEntry();
 				if (entry == null) break;
