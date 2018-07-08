@@ -4,6 +4,8 @@ package com.esotericsoftware.scar;
 import static com.esotericsoftware.minlog.Log.*;
 import static com.esotericsoftware.scar.Jar.*;
 
+import com.esotericsoftware.wildcard.Paths;
+
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
@@ -46,13 +48,12 @@ import javax.tools.FileObject;
 import javax.tools.ForwardingJavaFileManager;
 import javax.tools.JavaCompiler;
 import javax.tools.JavaFileObject;
-import javax.tools.JavaFileObject.Kind;
 import javax.tools.SimpleJavaFileObject;
+import javax.tools.StandardJavaFileManager;
 import javax.tools.ToolProvider;
 
 import org.apache.commons.net.ftp.FTPClient;
 
-import com.esotericsoftware.wildcard.Paths;
 import com.jcraft.jsch.ChannelExec;
 import com.jcraft.jsch.ChannelSftp;
 import com.jcraft.jsch.JSch;
@@ -841,7 +842,7 @@ public class Scar {
 		args.add(targetVersion);
 		args.add("-encoding");
 		args.add("UTF-8");
-		args.addAll(source.getPaths());
+// args.addAll(source.getPaths());
 		if (classpath != null && !classpath.isEmpty()) {
 			args.add("-classpath");
 			args.add(isWindows ? classpath.toString(";") : classpath.toString(":"));
@@ -850,11 +851,52 @@ public class Scar {
 		JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
 		if (compiler == null)
 			throw new RuntimeException("No compiler available. Ensure you are running from a 1.6+ JDK, and not a JRE.");
-		if (compiler.run(System.in, System.out, System.err, args.toArray(new String[args.size()])) != 0) {
+		DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<JavaFileObject>();
+		StandardJavaFileManager fileManager = compiler.getStandardFileManager(diagnostics, null, null);
+		Iterable<? extends JavaFileObject> compilationUnits = fileManager.getJavaFileObjectsFromStrings(source.getPaths());
+		JavaCompiler.CompilationTask task = compiler.getTask(null, fileManager, diagnostics, args, null, compilationUnits);
+
+// JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+		boolean s = task.call();
+		try {
+			fileManager.close();
+		} catch (IOException ex) {
+		}
+
+// if (compiler.run(System.in, System.out, System.err, args.toArray(new String[args.size()])) != 0) {
+		if (!s) {
 			System.out.flush();
 			System.err.flush();
-			throw new RuntimeException(
-				"Error during compilation.\nSource: " + source.count() + " files\nClasspath:\n" + classpath.toString("\n"));
+			StringBuilder b = new StringBuilder();
+			b.append("Compilation failed.\nSource: ").append(source.count()) //
+				.append(" files\nClasspath:\n").append(classpath.toString("\n"));
+			b.append("\nCompilation parameters: ");
+			for (String a : args)
+				b.append(a).append(' ');
+			if (!diagnostics.getDiagnostics().isEmpty()) {
+				Pattern pattern = Pattern.compile("(.*): error: (.*)", Pattern.DOTALL);
+				boolean lastWasNote = false;
+				for (Diagnostic diagnostic : diagnostics.getDiagnostics()) {
+					Diagnostic.Kind kind = diagnostic.getKind();
+					b.append(lastWasNote ? "\n" : "\n\n").append(diagnostic.getKind().name()).append(": ");
+					lastWasNote = kind == Diagnostic.Kind.NOTE;
+
+					String message = diagnostic.toString();
+					if (message.toLowerCase().startsWith(diagnostic.getKind().name().toLowerCase() + ": "))
+						message = message.substring(diagnostic.getKind().name().length() + 2);
+
+					Matcher matcher = pattern.matcher(message);
+					if (matcher.matches()) {
+						String file = matcher.group(1);
+						int slash = file.lastIndexOf('\\');
+						if (slash == -1) slash = file.lastIndexOf('/');
+						if (slash != -1) b.append(file.substring(slash + 1).replaceAll("\\.java(:\\d+)$", "$1")).append(": ");
+						b.append(matcher.group(2)).append("\n  file: ").append(file);
+					} else
+						b.append(message);
+				}
+			}
+			throw new RuntimeException(b.toString());
 		}
 		try {
 			Thread.sleep(100);
@@ -956,7 +998,8 @@ public class Scar {
 
 			// Compile class.
 			final ByteArrayOutputStream output = new ByteArrayOutputStream(32 * 1024);
-			final SimpleJavaFileObject javaObject = new SimpleJavaFileObject(URI.create("Generated.java"), Kind.SOURCE) {
+			final SimpleJavaFileObject javaObject = new SimpleJavaFileObject(URI.create("Generated.java"),
+				JavaFileObject.Kind.SOURCE) {
 				public OutputStream openOutputStream () {
 					return output;
 				}
@@ -967,7 +1010,8 @@ public class Scar {
 			};
 			DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector();
 			compiler.getTask(null, new ForwardingJavaFileManager(compiler.getStandardFileManager(null, null, null)) {
-				public JavaFileObject getJavaFileForOutput (Location location, String className, Kind kind, FileObject sibling) {
+				public JavaFileObject getJavaFileForOutput (Location location, String className, JavaFileObject.Kind kind,
+					FileObject sibling) {
 					return javaObject;
 				}
 			}, diagnostics, options, null, Arrays.asList(new JavaFileObject[] {javaObject})).call();
