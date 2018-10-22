@@ -4,8 +4,6 @@ package com.esotericsoftware.scar;
 import static com.esotericsoftware.minlog.Log.*;
 import static com.esotericsoftware.scar.Jar.*;
 
-import com.esotericsoftware.wildcard.Paths;
-
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
@@ -60,6 +58,8 @@ import com.jcraft.jsch.JSch;
 import com.jcraft.jsch.Session;
 import com.jcraft.jsch.SftpException;
 import com.jcraft.jsch.SftpProgressMonitor;
+
+import com.esotericsoftware.wildcard.Paths;
 
 import SevenZip.LzmaAlone;
 
@@ -1340,6 +1340,7 @@ public class Scar {
 				}
 				if (channel.isClosed()) {
 					if (INFO) info("scar", "Exit: " + channel.getExitStatus());
+					if (channel.getExitStatus() != 0) throw new RuntimeException("Error executing command: " + command);
 					break;
 				}
 				try {
