@@ -1292,11 +1292,13 @@ public class Scar {
 		}
 	}
 
-	static public String ssh (String server, String user, String password, String command) throws IOException {
-		return ssh(server, 22, user, password, command);
+	static public String ssh (String server, String user, String password, String command, boolean requireZeroExitCode)
+		throws IOException {
+		return ssh(server, 22, user, password, command, requireZeroExitCode);
 	}
 
-	static public String ssh (String server, int port, String user, String password, String command) throws IOException {
+	static public String ssh (String server, int port, String user, String password, String command, boolean requireZeroExitCode)
+		throws IOException {
 		if (INFO) info("scar", "SSH: " + command);
 		StringBuilder result = new StringBuilder();
 		Session session = null;
@@ -1340,7 +1342,8 @@ public class Scar {
 				}
 				if (channel.isClosed()) {
 					if (INFO) info("scar", "Exit: " + channel.getExitStatus());
-					if (channel.getExitStatus() != 0) throw new RuntimeException("Error executing command: " + command);
+					if (requireZeroExitCode && channel.getExitStatus() != 0)
+						throw new RuntimeException("Error executing command: " + command);
 					break;
 				}
 				try {
