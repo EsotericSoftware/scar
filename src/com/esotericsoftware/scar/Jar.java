@@ -99,7 +99,7 @@ public class Jar {
 		if (DEBUG) debug("scar", "Creating JAR (" + inputPaths.count() + " entries): " + outputFile);
 
 		mkdir(new File(outputFile).getParent());
-		JarOutputStream output = new JarOutputStream(new BufferedOutputStream(new FileOutputStream(outputFile)));
+		JarOutputStream output = new JarOutputStream(new FileOutputStream(outputFile));
 		output.setLevel(Deflater.BEST_COMPRESSION);
 		try {
 			for (int i = 0, n = fullPaths.size(); i < n; i++) {
@@ -163,6 +163,7 @@ public class Jar {
 		JarInputStream jarInput = null;
 		try {
 			jarOutput = new JarOutputStream(new FileOutputStream(tempFile));
+			jarOutput.setLevel(Deflater.BEST_COMPRESSION);
 			jarInput = new JarInputStream(new FileInputStream(jarFile));
 			Manifest manifest = jarInput.getManifest();
 			if (manifest != null) {
@@ -177,8 +178,7 @@ public class Jar {
 				if (entry == null) break;
 				String name = entry.getName();
 				// Skip signature files.
-				if (name.startsWith("META-INF") && (name.endsWith(".SF") || name.endsWith(".DSA") || name.endsWith(".RSA")))
-					continue;
+				if (name.startsWith("META-INF") && (name.endsWith(".SF") || name.endsWith(".DSA") || name.endsWith(".RSA"))) continue;
 				jarOutput.putNextEntry(new JarEntry(name));
 				while (true) {
 					int length = jarInput.read(buffer);
@@ -222,8 +222,8 @@ public class Jar {
 
 		File file = new File(keystoreFile);
 		file.delete();
-		Process process = Runtime.getRuntime().exec(
-			new String[] {resolvePath("keytool"), "-genkey", "-keystore", keystoreFile, "-alias", alias});
+		Process process = Runtime.getRuntime()
+			.exec(new String[] {resolvePath("keytool"), "-genkey", "-keystore", keystoreFile, "-alias", alias});
 		OutputStreamWriter writer = new OutputStreamWriter(process.getOutputStream());
 		writer.write(password + "\n"); // Enter keystore password:
 		writer.write(password + "\n"); // Re-enter new password:
@@ -332,6 +332,7 @@ public class Jar {
 
 		mkdir(parent(outJar));
 		JarOutputStream outJarStream = new JarOutputStream(new FileOutputStream(outJar));
+		outJarStream.setLevel(Deflater.BEST_COMPRESSION);
 		for (String name : names) {
 			InputStream input;
 			ZipEntry entry = firstJarFile.getEntry(name);
@@ -361,6 +362,7 @@ public class Jar {
 		JarFile inJarFile = new JarFile(inJar);
 		mkdir(parent(outJar));
 		JarOutputStream outJarStream = new JarOutputStream(new FileOutputStream(outJar));
+		outJarStream.setLevel(Deflater.BEST_COMPRESSION);
 		for (Enumeration<JarEntry> entries = inJarFile.entries(); entries.hasMoreElements();) {
 			JarEntry inEntry = entries.nextElement();
 			String name = inEntry.getName();
@@ -388,6 +390,7 @@ public class Jar {
 		JarFile inJarFile = new JarFile(inJar);
 		mkdir(parent(outJar));
 		JarOutputStream outJarStream = new JarOutputStream(new FileOutputStream(outJar));
+		outJarStream.setLevel(Deflater.BEST_COMPRESSION);
 		outer:
 		for (Enumeration<JarEntry> entries = inJarFile.entries(); entries.hasMoreElements();) {
 			JarEntry inEntry = entries.nextElement();
@@ -405,21 +408,24 @@ public class Jar {
 		inJarFile.close();
 	}
 
-	static public void addToJAR (String inJar, String outJar, String addName, byte[] bytes) throws IOException {
+	static public void addToJAR (String inJar, String outJar, String addName, byte[] bytes, boolean overwrite) throws IOException {
 		if (DEBUG) debug("scar", "Adding to JAR: " + inJar + " -> " + outJar + ", " + addName);
 
 		JarFile inJarFile = new JarFile(inJar);
 		mkdir(parent(outJar));
 		JarOutputStream outJarStream = new JarOutputStream(new FileOutputStream(outJar));
+		outJarStream.setLevel(Deflater.BEST_COMPRESSION);
 		ArrayList<String> names = new ArrayList();
 		for (Enumeration<JarEntry> entries = inJarFile.entries(); entries.hasMoreElements();)
 			names.add(entries.nextElement().getName());
 
-		if (names.contains(addName.replace('\\', '/')) || names.contains(addName.replace('/', '\\')))
-			throw new RuntimeException("JAR already has entry: " + addName);
 		addName = addName.replace('\\', '/');
-		names.add(addName);
-		Collections.sort(names);
+		boolean exists = names.contains(addName) || names.contains(addName.replace('/', '\\'));
+		if (!overwrite && exists) throw new RuntimeException("JAR already has entry: " + addName);
+		if (!exists) {
+			names.add(addName);
+			Collections.sort(names);
+		}
 
 		if (names.remove("META-INF/MANIFEST.MF") || names.remove("META-INF\\MANIFEST.MF")) names.add(0, "META-INF/MANIFEST.MF");
 
@@ -441,6 +447,7 @@ public class Jar {
 		JarFile inJarFile = new JarFile(inJar);
 		mkdir(parent(outJar));
 		JarOutputStream outJarStream = new JarOutputStream(new FileOutputStream(outJar));
+		outJarStream.setLevel(Deflater.BEST_COMPRESSION);
 		for (Enumeration<JarEntry> entries = inJarFile.entries(); entries.hasMoreElements();) {
 			JarEntry inEntry = entries.nextElement();
 			String name = inEntry.getName();
@@ -460,6 +467,7 @@ public class Jar {
 		JarFile inJarFile = new JarFile(inJar);
 		mkdir(parent(outJar));
 		JarOutputStream outJarStream = new JarOutputStream(new FileOutputStream(outJar));
+		outJarStream.setLevel(Deflater.BEST_COMPRESSION);
 		for (Enumeration<JarEntry> entries = inJarFile.entries(); entries.hasMoreElements();) {
 			String name = entries.nextElement().getName();
 			outJarStream.putNextEntry(new JarEntry(name));
