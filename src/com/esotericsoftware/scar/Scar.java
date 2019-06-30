@@ -11,7 +11,6 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
-import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
@@ -430,11 +429,24 @@ public class Scar {
 		return out;
 	}
 
-	static public String readFile (String file) throws IOException {
-		return readFile(file, null);
+	static public byte[] readBytes (String file) throws IOException {
+		long fileSize = fileSize(file);
+		ByteArrayOutputStream output = new ByteArrayOutputStream(fileSize == 0 ? 1024 : (int)fileSize);
+		FileInputStream input = new FileInputStream(file);
+		byte[] buffer = new byte[256];
+		while (true) {
+			int length = input.read(buffer);
+			if (length == -1) break;
+			output.write(buffer, 0, length);
+		}
+		return output.toByteArray();
 	}
 
-	static public String readFile (String fileName, String charset) throws IOException {
+	static public String readString (String file) throws IOException {
+		return readString(file, null);
+	}
+
+	static public String readString (String fileName, String charset) throws IOException {
 		if (fileName == null) throw new IllegalArgumentException("file cannot be null.");
 		File file = new File(fileName);
 		int fileLength = (int)file.length();
@@ -463,11 +475,11 @@ public class Scar {
 		return output.toString();
 	}
 
-	static public void writeFile (String fileName, String contents, boolean append) {
-		writeFile(fileName, contents, append, null);
+	static public String writeFile (String fileName, String contents, boolean append) {
+		return writeFile(fileName, contents, append, null);
 	}
 
-	static public void writeFile (String fileName, String contents, boolean append, String charset) {
+	static public String writeFile (String fileName, String contents, boolean append, String charset) {
 		Writer writer = null;
 		try {
 			File file = new File(fileName);
@@ -477,6 +489,7 @@ public class Scar {
 			else
 				writer = new OutputStreamWriter(output, charset);
 			writer.write(contents);
+			return file.getAbsolutePath();
 		} catch (Exception ex) {
 			throw new RuntimeException("Error writing file: " + fileName, ex);
 		} finally {
@@ -522,6 +535,12 @@ public class Scar {
 		return new File(path).exists();
 	}
 
+	static public long fileSize (String path) {
+		if (path == null) throw new IllegalArgumentException("path cannot be null.");
+
+		return new File(path).length();
+	}
+
 	/** Returns the canonical path for the specified path. Eg, if "." is passed, this will resolve the actual path and return
 	 * it. */
 	static public String canonical (String path) {
@@ -535,26 +554,6 @@ public class Scar {
 			if (file.getName().equals(".")) file = file.getParentFile();
 			return file.getPath();
 		}
-	}
-
-	/** Returns the textual contents of the specified file. */
-	static public String fileContents (String path) throws IOException {
-		StringBuilder stringBuffer = new StringBuilder(4096);
-		FileReader reader = new FileReader(path);
-		try {
-			char[] buffer = new char[2048];
-			while (true) {
-				int length = reader.read(buffer);
-				if (length == -1) break;
-				stringBuffer.append(buffer, 0, length);
-			}
-		} finally {
-			try {
-				reader.close();
-			} catch (Exception ignored) {
-			}
-		}
-		return stringBuffer.toString();
 	}
 
 	/** Returns only the filename portion of the specified path. */
@@ -1196,24 +1195,12 @@ public class Scar {
 						continue;
 					}
 
-					if (cd) {
-						try {
-							channel.cd(dir);
-						} catch (SftpException cdEx) {
-							switch (cdEx.id) {
-							case ChannelSftp.SSH_FX_NO_SUCH_FILE:
-							case ChannelSftp.SSH_FX_BAD_MESSAGE:
-							case ChannelSftp.SSH_FX_OP_UNSUPPORTED:
-							case ChannelSftp.SSH_FX_PERMISSION_DENIED:
-								throw cdEx;
-							}
-							if (TRACE) trace("scar", "Error changing remote directory.", cdEx);
-						}
-						cd = false;
-					}
-
 					// Upload.
 					try {
+						if (cd) {
+							fileUpload.cd(channel, dir);
+							cd = false;
+						}
 						fileUpload.upload(channel);
 						break;
 					} catch (FileNotFoundException ex) {
@@ -1277,6 +1264,37 @@ public class Scar {
 			this.monitor = monitor;
 			fileLength = file.length();
 			interval = Math.max(1, fileLength / 76);
+		}
+
+		void cd (ChannelSftp channel, String path) throws Exception {
+			try {
+				channel.cd(path);
+			} catch (SftpException ex) {
+				if (ex.id != ChannelSftp.SSH_FX_NO_SUCH_FILE) throw new Exception("Error setting remote directory: " + path, ex);
+				mkdirs(channel, path);
+			}
+		}
+
+		private void mkdirs (ChannelSftp channel, String path) throws Exception {
+			StringBuilder good = new StringBuilder(path.length());
+			try {
+				for (String dir : path.split("/")) {
+					if (dir.isEmpty()) continue;
+					if (good.length() == 0) dir = '/' + dir;
+					good.append(dir);
+					try {
+						channel.cd(dir);
+					} catch (SftpException ex) {
+						if (ex.id != ChannelSftp.SSH_FX_NO_SUCH_FILE) throw ex;
+						channel.mkdir(dir);
+						if (TRACE) trace("scar", "Created remote directory: " + good);
+						channel.cd(dir);
+					}
+					good.append("/");
+				}
+			} catch (Exception ex) {
+				throw new Exception("Error creating remote directory: " + good, ex);
+			}
 		}
 
 		void upload (ChannelSftp channel) throws Exception {
