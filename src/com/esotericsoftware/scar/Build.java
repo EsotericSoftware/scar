@@ -166,10 +166,18 @@ public class Build extends Project {
 
 		String classesDir = mkdir(project.path("$target$/classes/"));
 
-		Scar.compile(source, classpath, classesDir, project.get("compileTarget", System.getProperty("java.version").substring(0, 3)));
+		String defaultTarget = System.getProperty("java.version");
+		if (defaultTarget.startsWith("1.")) {
+			int index = defaultTarget.substring(2).indexOf('.');
+			if (index != -1) defaultTarget = defaultTarget.substring(0, index + 2);
+		} else {
+			int index = defaultTarget.indexOf('.');
+			if (index != -1) defaultTarget = defaultTarget.substring(0, index);
+		}
+		Scar.compile(source, classpath, classesDir, project.get("compileTarget", defaultTarget));
 		return classesDir;
 	}
-	
+
 	/** Collects the class files from the "classes" directory and all the resource files using the "resources" property and encodes
 	 * them into a JAR file.
 	 * 
