@@ -30,6 +30,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Scanner;
 import java.util.regex.Matcher;
@@ -297,9 +298,13 @@ public class Scar {
 		return file.getAbsolutePath();
 	}
 
-	/** Splits the specified command at spaces that are not surrounded by quotes and passes the result to {@link #shell(String...)}
-	 * . */
 	static public String shell (String command) throws IOException {
+		return shell(null, command);
+	}
+
+	/** Splits the specified command at spaces that are not surrounded by quotes and passes the result to
+	 * {@link #shell(Map, String...)}. */
+	static public String shell (Map<? extends String, ? extends String> env, String command) throws IOException {
 		List<String> matchList = new ArrayList<String>();
 		Pattern regex = Pattern.compile("[^\\s\"']+|\"([^\"]*)\"|'([^']*)'");
 		Matcher regexMatcher = regex.matcher(command);
@@ -311,12 +316,17 @@ public class Scar {
 			else
 				matchList.add(regexMatcher.group());
 		}
-		return shell(matchList.toArray(new String[matchList.size()]));
+		return shell(env, matchList.toArray(new String[matchList.size()]));
 	}
 
-	/** Executes the specified shell command. {@link #resolvePath(String)} is used to locate the file to execute. If not found, on
-	 * Windows the same filename with an "exe" extension is also tried. */
 	static public String shell (String... command) throws IOException {
+		return shell(null, command);
+	}
+
+	/** Executes the specified shell command with the specified environment variables. {@link #resolvePath(String)} is used to
+	 * locate the file to execute. If not found, on Windows the same filename with an "exe" extension is also tried.
+	 * @param env May be null. */
+	static public String shell (Map<? extends String, ? extends String> env, String... command) throws IOException {
 		if (command == null) throw new IllegalArgumentException("command cannot be null.");
 		if (command.length == 0) throw new IllegalArgumentException("command cannot be empty.");
 
@@ -335,7 +345,11 @@ public class Scar {
 			}
 			trace("scar", "Executing command: " + buffer);
 		}
-		final Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
+		ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
+		if (env != null) {
+			builder.environment().putAll(env);
+		}
+		final Process process = builder.start();
 		final StringBuilder outputBuffer = new StringBuilder(512);
 		new Thread("shell") {
 			public void run () {
