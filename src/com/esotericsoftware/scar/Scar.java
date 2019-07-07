@@ -329,6 +329,8 @@ public class Scar {
 	static public String shell (Map<? extends String, ? extends String> env, String... command) throws IOException {
 		if (command == null) throw new IllegalArgumentException("command cannot be null.");
 		if (command.length == 0) throw new IllegalArgumentException("command cannot be empty.");
+		if (isWindows && command.length > 8192)
+			throw new IllegalArgumentException("command is too long: " + command.length + " > 8192");
 
 		String originalCommand = command[0];
 		command[0] = resolvePath(command[0]);
