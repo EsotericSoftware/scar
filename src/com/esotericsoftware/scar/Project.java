@@ -245,12 +245,12 @@ public class Project {
 					paths.glob(dir);
 			}
 		} else if (object instanceof String) {
-			String dir = path((String)object);
-			File file = new File(dir);
+			String dirPattern = path((String)object);
+			File file = new File(dirPattern);
 			if (!file.isDirectory() && file.exists())
-				paths.addFile(dir);
+				paths.addFile(dirPattern);
 			else
-				paths.glob(dir);
+				paths.glob(dirPattern);
 		}
 		return paths;
 	}

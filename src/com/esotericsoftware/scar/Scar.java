@@ -329,8 +329,6 @@ public class Scar {
 	static public String shell (Map<? extends String, ? extends String> env, String... command) throws IOException {
 		if (command == null) throw new IllegalArgumentException("command cannot be null.");
 		if (command.length == 0) throw new IllegalArgumentException("command cannot be empty.");
-		if (isWindows && command.length > 8192)
-			throw new IllegalArgumentException("command is too long: " + command.length + " > 8192");
 
 		String originalCommand = command[0];
 		command[0] = resolvePath(command[0]);
@@ -577,7 +575,7 @@ public class Scar {
 		return new File(canonical(path)).getName();
 	}
 
-	/** Returns only the filename portion of the specified path. */
+	/** Returns only the last modified time of the specified file. */
 	static public long fileLastModified (String path) {
 		return new File(canonical(path)).lastModified();
 	}
@@ -868,7 +866,8 @@ public class Scar {
 			throw new RuntimeException("No compiler available. Ensure you are running from a 1.6+ JDK, and not a JRE.");
 		DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<JavaFileObject>();
 		StandardJavaFileManager fileManager = compiler.getStandardFileManager(diagnostics, null, null);
-		Iterable<? extends JavaFileObject> compilationUnits = fileManager.getJavaFileObjectsFromStrings(source.getPaths());
+		Iterable<? extends JavaFileObject> compilationUnits = fileManager
+			.getJavaFileObjectsFromStrings(source.filesOnly().getPaths());
 		JavaCompiler.CompilationTask task = compiler.getTask(null, fileManager, diagnostics, args, null, compilationUnits);
 
 // JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
