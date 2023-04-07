@@ -1132,7 +1132,7 @@ public class Scar {
 		sftpUpload( //
 			server, port, user, password, //
 			null, 0, null, null, //
-			dir, paths, null, true);
+			dir, paths, null, printProgress);
 	}
 
 	/** Upload through an SSH tunnel using an intermediate server.
@@ -1178,6 +1178,8 @@ public class Scar {
 							session1 = jsch.getSession(user1, server1, port1);
 							session1.setPassword(password1);
 							session1.setConfig("StrictHostKeyChecking", "no");
+							session1.setConfig("PubkeyAuthentication", "no");
+							session1.setConfig("PreferredAuthentications", "password");
 							session1.connect(10000);
 
 							if (server2 != null) {
@@ -1185,6 +1187,8 @@ public class Scar {
 								session2 = jsch.getSession(user2, "127.0.0.1", forwardPort);
 								session2.setPassword(password2);
 								session2.setConfig("StrictHostKeyChecking", "no");
+								session2.setConfig("PubkeyAuthentication", "no");
+								session2.setConfig("PreferredAuthentications", "password");
 								session2.setHostKeyAlias(server2);
 								session2.connect(10000);
 								session = session2;
@@ -1343,6 +1347,8 @@ public class Scar {
 			try {
 				session = new JSch().getSession(user, server, port);
 				session.setConfig("StrictHostKeyChecking", "no");
+				session.setConfig("PubkeyAuthentication", "no");
+				session.setConfig("PreferredAuthentications", "password");
 				session.setPassword(password);
 				session.connect(10000);
 				channel = (ChannelExec)session.openChannel("exec");
