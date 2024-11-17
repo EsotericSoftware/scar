@@ -1,5 +1,5 @@
 main: com.esotericsoftware.scar.Build
-version: 1.10
+version: 1.11
 ---
 Build.build(project);
 Build.oneJAR(project);
