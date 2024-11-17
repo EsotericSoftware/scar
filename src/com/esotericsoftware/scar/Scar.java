@@ -1122,15 +1122,15 @@ public class Scar {
 		return true;
 	}
 
-	static public void sftpUpload (String server, int port, String user, String password, String dir, Paths paths)
+	static public void sftpUpload (String server, int port, String user, String password, String keyFile, String dir, Paths paths)
 		throws IOException {
-		sftpUpload(server, port, user, password, dir, paths, null, true);
+		sftpUpload(server, port, user, password, keyFile, dir, paths, null, true);
 	}
 
-	static public void sftpUpload (String server, int port, String user, String password, String dir, Paths paths,
+	static public void sftpUpload (String server, int port, String user, String password, String keyFile, String dir, Paths paths,
 		final ProgressMonitor monitor, final boolean printProgress) throws IOException {
 		sftpUpload( //
-			server, port, user, password, //
+			server, port, user, password, keyFile, //
 			null, 0, null, null, //
 			dir, paths, null, printProgress);
 	}
@@ -1139,7 +1139,7 @@ public class Scar {
 	 * <p>
 	 * Note some users have reported needing to use IP addresses. */
 	static public void sftpUpload ( //
-		String server1, int port1, String user1, final String password1, //
+		String server1, int port1, String user1, final String password1, String keyFile, //
 		String server2, int port2, String user2, final String password2, //
 		String dir, Paths paths, final ProgressMonitor monitor, final boolean printProgress) throws IOException {
 
@@ -1161,14 +1161,17 @@ public class Scar {
 				});
 			}
 
-			JSch jsch = new JSch();
+			JSch jsch = new JSch(); // https://github.com/mwiede/jsch
+			if (keyFile != null) jsch.addIdentity(keyFile);
 			ChannelSftp channel = null;
-			boolean reconnecting = false, cd = true;
+			int retries = 0;
+			boolean cd = true;
 			for (String path : paths) {
 				SftpFileUpload fileUpload = new SftpFileUpload(path, total, monitor, printProgress);
 				if (INFO) info("scar", "SFTP upload: " + fileUpload.file.getName() + " -> " + dir);
 				while (true) {
 					// Connect.
+					boolean first = true;
 					try {
 						if (session1 == null || !session1.isConnected() || (server2 != null && !session2.isConnected())) {
 							if (session1 != null) session1.disconnect();
@@ -1176,37 +1179,45 @@ public class Scar {
 							channel = null;
 
 							session1 = jsch.getSession(user1, server1, port1);
-							session1.setPassword(password1);
+							if (keyFile == null) {
+								session1.setPassword(password1);
+								session1.setConfig("PreferredAuthentications", "password");
+								session1.setConfig("PubkeyAuthentication", "no");
+							}
 							session1.setConfig("StrictHostKeyChecking", "no");
-							session1.setConfig("PubkeyAuthentication", "no");
-							session1.setConfig("PreferredAuthentications", "password");
-							session1.connect(10000);
+							session1.connect(8000);
+							first = false;
 
 							if (server2 != null) {
 								int forwardPort = session1.setPortForwardingL(0, server2, port2);
 								session2 = jsch.getSession(user2, "127.0.0.1", forwardPort);
-								session2.setPassword(password2);
+								if (keyFile == null) {
+									session2.setPassword(password2);
+									session2.setConfig("PubkeyAuthentication", "no");
+									session2.setConfig("PreferredAuthentications", "password");
+								}
 								session2.setConfig("StrictHostKeyChecking", "no");
-								session2.setConfig("PubkeyAuthentication", "no");
-								session2.setConfig("PreferredAuthentications", "password");
 								session2.setHostKeyAlias(server2);
-								session2.connect(10000);
+								session2.connect(8000);
 								session = session2;
 							} else
 								session = session1;
 						}
 						if (channel == null || !channel.isConnected()) {
 							channel = (ChannelSftp)session.openChannel("sftp");
-							channel.connect(10000);
-							reconnecting = false;
+							channel.connect(8000);
+							retries = 0;
 							cd = true;
 						}
 					} catch (Exception ex) {
 						if (TRACE) trace("scar", "Connection error.", ex);
-						if (!reconnecting) {
-							reconnecting = true;
-							if (WARN) warn("scar", "Connecting...");
+						if (retries == 3) {
+							if (first)
+								throw new IOException("Unable to connect for SFTP upload: " + user1 + "@" + server1 + ":" + port1);
+							else
+								throw new IOException("Unable to connect for SFTP upload: " + user2 + "@" + server2 + ":" + port2);
 						}
+						if (retries++ == 0 && WARN) warn("scar", "Connecting...");
 						try {
 							Thread.sleep(250);
 						} catch (Exception ignored) {
